@@ -17,6 +17,7 @@ import star.intellijplugin.pkgfinder.gradle.manager.model.PackageAdapters
 import star.intellijplugin.pkgfinder.gradle.manager.model.PackageMetadata
 import star.intellijplugin.pkgfinder.gradle.manager.model.PackageSource
 import star.intellijplugin.pkgfinder.gradle.manager.model.UnifiedPackage
+import star.intellijplugin.pkgfinder.gradle.manager.service.PluginLogService
 import star.intellijplugin.pkgfinder.gradle.manager.service.RepositoryConfig
 import star.intellijplugin.pkgfinder.gradle.manager.service.RepositoryDiscoveryService
 import star.intellijplugin.pkgfinder.gradle.manager.service.RepositoryType
@@ -40,6 +41,7 @@ class UnifiedDependencyPanel(
     private val parentDisposable: Disposable
 ) {
     private val log = Logger.getInstance(javaClass)
+    private val uiLog by lazy { PluginLogService.getInstance(project) }
 
     // Gradle Services
     private val gradleDependencyService = GradleDependencyManagerService.getInstance(project)
@@ -415,6 +417,7 @@ class UnifiedDependencyPanel(
         listPanel.setLoading(true)
 
         val selectedRepo = searchRepoSelector.selectedItem as? RepositoryConfig
+        uiLog.info("Starting search for: '$query' in ${selectedRepo?.name ?: "default repository"}", "Search")
 
         ApplicationManager.getApplication().executeOnPooledThread {
             try {
@@ -442,12 +445,15 @@ class UnifiedDependencyPanel(
                     pkg
                 }
 
+                uiLog.info("Search completed: found ${packages.size} packages, ${mergedPackages.count { it.isInstalled }} installed", "Search")
+
                 ApplicationManager.getApplication().invokeLater {
                     listPanel.setPackages(mergedPackages)
                     listPanel.setLoading(false)
                 }
             } catch (e: Exception) {
                 log.error("Search failed", e)
+                uiLog.error("Search failed: ${e.message}", "Search")
                 ApplicationManager.getApplication().invokeLater {
                     listPanel.setLoading(false)
                 }
@@ -459,34 +465,53 @@ class UnifiedDependencyPanel(
      * Search for packages in the specified repository.
      */
     private fun searchInRepository(query: String, repo: RepositoryConfig?): List<UnifiedPackage> {
-        if (repo == null) return emptyList()
+        if (repo == null) {
+            uiLog.warn("No repository selected for search", "Search")
+            return emptyList()
+        }
 
         log.info("Searching repository: ${repo.name} (${repo.type}) for query: $query")
+        uiLog.info("Searching ${repo.name} (${repo.type}) - URL: ${repo.url}", "Search")
 
-        return when (repo.type) {
+        val hasCredentials = repo.username != null || repo.password != null
+        if (hasCredentials) {
+            uiLog.debug("Repository has credentials configured", "Search")
+        } else {
+            uiLog.debug("No credentials configured for this repository", "Search")
+        }
+
+        val results = when (repo.type) {
             RepositoryType.MAVEN_CENTRAL -> {
+                uiLog.info("Using Maven Central search API", "Search")
                 val results = DependencyService.searchFromMavenCentral(query)
                 results.map { PackageAdapters.fromDependency(it, PackageSource.MAVEN_CENTRAL) }
             }
             RepositoryType.NEXUS -> {
+                uiLog.info("Using Nexus search API", "Search")
                 val results = DependencyService.searchFromNexus(query)
                 results.map { PackageAdapters.fromDependency(it, PackageSource.NEXUS) }
             }
             RepositoryType.AZURE_ARTIFACTS -> {
+                uiLog.info("Using Azure Artifacts REST API", "Search")
                 searchAzureArtifacts(query, repo)
             }
             RepositoryType.ARTIFACTORY -> {
+                uiLog.info("Using Artifactory GAVC search API", "Search")
                 searchArtifactoryRepo(query, repo)
             }
             RepositoryType.CUSTOM, RepositoryType.MAVEN, RepositoryType.JITPACK -> {
-                // Try generic Maven repository search
+                uiLog.info("Using generic Maven repository search", "Search")
                 searchGenericMavenRepo(query, repo)
             }
             else -> {
                 log.warn("Search not supported for repository type: ${repo.type}")
+                uiLog.warn("Search not supported for repository type: ${repo.type}", "Search")
                 emptyList()
             }
         }
+
+        uiLog.info("Repository search returned ${results.size} results", "Search")
+        return results
     }
 
     /**
@@ -606,6 +631,7 @@ class UnifiedDependencyPanel(
         val repoUrl = repo.url.trimEnd('/')
 
         log.info("Searching Azure Artifacts: $repoUrl for query: $query")
+        uiLog.info("Azure Artifacts: Parsing URL: $repoUrl", "Azure")
 
         try {
             // Try project-scoped URL first
@@ -622,6 +648,7 @@ class UnifiedDependencyPanel(
                 project = match.groupValues[2]
                 feed = match.groupValues[3]
                 log.info("Detected project-scoped Azure Artifacts: org=$org, project=$project, feed=$feed")
+                uiLog.info("Azure Artifacts: Detected project-scoped feed: org=$org, project=$project, feed=$feed", "Azure")
             } else {
                 // Try org-scoped URL
                 regex = """pkgs\.dev\.azure\.com/([^/]+)/_packaging/([^/]+)""".toRegex()
@@ -632,8 +659,10 @@ class UnifiedDependencyPanel(
                     project = null
                     feed = match.groupValues[2]
                     log.info("Detected org-scoped Azure Artifacts: org=$org, feed=$feed")
+                    uiLog.info("Azure Artifacts: Detected org-scoped feed: org=$org, feed=$feed", "Azure")
                 } else {
                     log.warn("Could not parse Azure Artifacts URL: $repoUrl")
+                    uiLog.error("Azure Artifacts: Could not parse URL format. Expected: pkgs.dev.azure.com/{org}/{project?}/_packaging/{feed}/maven/v1", "Azure")
                     return emptyList()
                 }
             }
@@ -652,44 +681,57 @@ class UnifiedDependencyPanel(
             }
 
             log.info("Azure Artifacts API URL: $searchUrl")
+            uiLog.info("Azure Artifacts: API URL: $searchUrl", "Azure")
 
             // Build authentication credentials
             val auth = if (repo.username != null && repo.password != null) {
+                uiLog.info("Azure Artifacts: Using username/password authentication", "Azure")
                 star.intellijplugin.pkgfinder.util.HttpRequestHelper.AuthCredentials(
                     username = repo.username,
                     password = repo.password
                 )
-            } else {
+            } else if (repo.password != null) {
                 // For Azure Artifacts, try using a PAT with empty username (Azure DevOps convention)
-                // The PAT is often stored as the password
-                repo.password?.let { pat ->
-                    star.intellijplugin.pkgfinder.util.HttpRequestHelper.AuthCredentials(
-                        username = "",
-                        password = pat
-                    )
-                }
+                uiLog.info("Azure Artifacts: Using PAT authentication (password only)", "Azure")
+                star.intellijplugin.pkgfinder.util.HttpRequestHelper.AuthCredentials(
+                    username = "",
+                    password = repo.password
+                )
+            } else {
+                uiLog.warn("Azure Artifacts: No credentials configured - request may fail with 401", "Azure")
+                null
             }
 
+            uiLog.info("Azure Artifacts: Making HTTP request...", "Azure")
             val result = star.intellijplugin.pkgfinder.util.HttpRequestHelper.getForObject(searchUrl, auth) { it }
 
             when (result) {
                 is star.intellijplugin.pkgfinder.util.HttpRequestHelper.RequestResult.Success -> {
                     if (result.data != null) {
                         log.info("Azure Artifacts search returned data (${result.data.length} chars)")
-                        return parseAzureArtifactsResponse(result.data)
+                        uiLog.info("Azure Artifacts: Received ${result.data.length} bytes of response data", "Azure")
+                        val packages = parseAzureArtifactsResponse(result.data)
+                        uiLog.info("Azure Artifacts: Parsed ${packages.size} packages from response", "Azure")
+                        return packages
                     } else {
                         log.info("Azure Artifacts search returned empty response")
+                        uiLog.warn("Azure Artifacts: Server returned empty response", "Azure")
                     }
                 }
                 is star.intellijplugin.pkgfinder.util.HttpRequestHelper.RequestResult.Error -> {
                     log.warn("Azure Artifacts search failed: ${result.exception.message} (code: ${result.responseCode})")
+                    uiLog.error("Azure Artifacts: HTTP request failed - ${result.exception.message} (code: ${result.responseCode})", "Azure")
                     if (result.responseCode == 401 || result.responseCode == 403) {
                         log.warn("Authentication failed for Azure Artifacts. Make sure credentials are configured.")
+                        uiLog.error("Azure Artifacts: Authentication failed (${result.responseCode}). Check your PAT token in Maven settings.xml", "Azure")
+                    } else if (result.responseCode == 404) {
+                        uiLog.error("Azure Artifacts: Feed not found (404). Check the feed name and URL", "Azure")
                     }
                 }
             }
         } catch (e: Exception) {
             log.warn("Azure Artifacts search failed with exception: ${e.message}", e)
+            uiLog.error("Azure Artifacts: Exception - ${e.message}", "Azure")
         }
 
         return emptyList()

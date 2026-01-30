@@ -3,13 +3,17 @@ package star.intellijplugin.pkgfinder.gradle.manager.ui
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.*
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.SimpleToolWindowPanel
+import com.intellij.openapi.util.Disposer
 import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBLabel
+import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.components.JBTabbedPane
 import com.intellij.util.ui.JBUI
 import star.intellijplugin.pkgfinder.PackageFinderBundle.message
+import star.intellijplugin.pkgfinder.gradle.manager.service.PluginLogService
 import java.awt.*
 import javax.swing.*
 
@@ -217,12 +221,68 @@ class MainToolWindowPanel(
     }
 
     private fun createLogPanel(): JPanel {
-        return JPanel(BorderLayout()).apply {
-            val label = JBLabel(message("unified.tab.log.coming")).apply {
-                horizontalAlignment = SwingConstants.CENTER
-                foreground = JBColor.GRAY
+        val logService = PluginLogService.getInstance(project)
+
+        // Log text area with monospace font
+        val logTextArea = JTextArea().apply {
+            isEditable = false
+            font = Font(Font.MONOSPACED, Font.PLAIN, 12)
+            background = JBColor.PanelBackground
+            foreground = JBColor.foreground()
+            text = logService.getFormattedLog()
+        }
+
+        // Listen for new log entries
+        val logListener: (PluginLogService.LogEntry) -> Unit = { entry ->
+            ApplicationManager.getApplication().invokeLater {
+                logTextArea.append(entry.formatted() + "\n")
+                // Auto-scroll to bottom
+                logTextArea.caretPosition = logTextArea.document.length
             }
-            add(label, BorderLayout.CENTER)
+        }
+        logService.addListener(logListener)
+
+        // Remove listener when disposed
+        Disposer.register(parentDisposable) {
+            logService.removeListener(logListener)
+        }
+
+        // Log an initial message
+        logService.info("Log panel initialized", "UI")
+
+        return JPanel(BorderLayout()).apply {
+            // Toolbar with clear button
+            val toolbar = JPanel(FlowLayout(FlowLayout.LEFT, 4, 4)).apply {
+                add(JButton("Clear").apply {
+                    icon = AllIcons.Actions.GC
+                    addActionListener {
+                        logTextArea.text = ""
+                        logService.clear()
+                    }
+                })
+                add(JButton("Copy").apply {
+                    icon = AllIcons.Actions.Copy
+                    addActionListener {
+                        logTextArea.selectAll()
+                        logTextArea.copy()
+                        logTextArea.select(0, 0)
+                    }
+                })
+
+                // Log level filter (for future use)
+                add(Box.createHorizontalStrut(20))
+                add(JBLabel("Filter:"))
+                add(JComboBox(arrayOf("All", "Info", "Warn", "Error")).apply {
+                    addActionListener {
+                        // TODO: Implement log level filtering
+                    }
+                })
+            }
+
+            add(toolbar, BorderLayout.NORTH)
+            add(JBScrollPane(logTextArea).apply {
+                border = JBUI.Borders.empty()
+            }, BorderLayout.CENTER)
         }
     }
 }
