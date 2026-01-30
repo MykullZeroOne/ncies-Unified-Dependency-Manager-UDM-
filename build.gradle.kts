@@ -1,6 +1,8 @@
 import org.jetbrains.changelog.Changelog
 import org.jetbrains.changelog.markdownToHTML
+import org.jetbrains.intellij.platform.gradle.IntelliJPlatformType
 import org.jetbrains.intellij.platform.gradle.TestFrameworkType
+import org.jetbrains.intellij.platform.gradle.services.RequestedIntelliJPlatform
 
 plugins {
     id("java") // Java support
@@ -55,12 +57,16 @@ dependencies {
         bundledModules(providers.gradleProperty("platformBundledModules").map { it.split(',') })
 
         testFramework(TestFrameworkType.Platform)
+
     }
 }
 
+
 // Configure IntelliJ Platform Gradle Plugin - read more: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-extension.html
 intellijPlatform {
+//RequestedIntelliJPlatform( type = IntelliJPlatformType.IntellijIdeaUltimate)
     pluginConfiguration {
+
         name = providers.gradleProperty("pluginName")
         version = providers.gradleProperty("pluginVersion")
 
@@ -111,7 +117,14 @@ intellijPlatform {
 
     pluginVerification {
         ides {
-            recommended()
+            // Use specific IDE versions for verification
+            // IC (Community) is not available for 2025.3+, use IU (Ultimate) or limit to older versions
+            ide(IntelliJPlatformType.IntellijIdeaCommunity, "2024.2.6")
+            ide(IntelliJPlatformType.IntellijIdeaCommunity, "2024.3.7")
+            ide(IntelliJPlatformType.IntellijIdeaCommunity, "2025.1.7")
+            ide(IntelliJPlatformType.IntellijIdeaCommunity, "2025.2.6")
+            // For 2025.3+, use IntelliJ IDEA (unified) instead of Community
+            ide(IntelliJPlatformType.IntellijIdea, "2025.3.2")
         }
     }
 }

@@ -3,14 +3,14 @@ package star.intellijplugin.pkgfinder
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
-import star.intellijplugin.pkgfinder.ui.gradle.GradlePluginToolWindow
-import star.intellijplugin.pkgfinder.ui.maven.MavenToolWindow
-import star.intellijplugin.pkgfinder.ui.npm.NpmToolWindow
-import star.intellijplugin.pkgfinder.util.Icons
+import star.intellijplugin.pkgfinder.gradle.manager.ui.MainToolWindowPanel
 
 /**
+ * Factory for creating the Unified Dependency Manager tool window.
+ * Provides a NuGet-style interface with tabs for Packages, Repositories, Caches, and Log.
+ *
  * @author drawsta
- * @LastModified: 2025-07-14
+ * @LastModified: 2026-01-30
  * @since 2025-01-16
  */
 class PackageFinderToolWindowFactory : ToolWindowFactory {
@@ -18,35 +18,13 @@ class PackageFinderToolWindowFactory : ToolWindowFactory {
         val contentManager = toolWindow.contentManager
         val contentFactory = contentManager.factory
 
-        val mavenContent = contentFactory.createContent(
-            MavenToolWindow(toolWindow.disposable).contentPanel,
-            PackageFinderBundle.message("toolwindow.maven.title"),
+        val mainPanel = MainToolWindowPanel(project, toolWindow.disposable)
+        val content = contentFactory.createContent(
+            mainPanel.contentPanel,
+            null,
             false
-        ).apply {
-            icon = Icons.MAVEN.getThemeBasedIcon()
-            putUserData(ToolWindow.SHOW_CONTENT_ICON, true)
-        }
+        )
 
-        val npmContent = contentFactory.createContent(
-            NpmToolWindow(toolWindow.disposable).contentPanel,
-            PackageFinderBundle.message("toolwindow.npm.title"),
-            false
-        ).apply {
-            icon = Icons.NPM.getThemeBasedIcon()
-            putUserData(ToolWindow.SHOW_CONTENT_ICON, true)
-        }
-
-        val gradlePluginContent = contentFactory.createContent(
-            GradlePluginToolWindow(toolWindow.disposable).contentPanel,
-            PackageFinderBundle.message("toolwindow.gradlePlugin.title"),
-            false
-        ).apply {
-            icon = Icons.GRADLE_PLUGIN.getThemeBasedIcon()
-            putUserData(ToolWindow.SHOW_CONTENT_ICON, true)
-        }
-
-        contentManager.addContent(mavenContent)
-        contentManager.addContent(gradlePluginContent)
-        contentManager.addContent(npmContent)
+        contentManager.addContent(content)
     }
 }
