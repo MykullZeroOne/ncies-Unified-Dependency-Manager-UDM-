@@ -19,6 +19,7 @@ import star.intellijplugin.pkgfinder.gradle.manager.model.UnifiedPackage
 import java.awt.*
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
+import java.awt.geom.Path2D
 import javax.swing.*
 import javax.swing.event.DocumentEvent
 
@@ -228,9 +229,14 @@ class PackageListPanel(
         searchTimer?.stop()
         searchTimer = javax.swing.Timer(searchDebounceMs) {
             val text = searchField.text.trim()
-            if (currentFilterMode == FilterMode.BROWSE) {
-                // In Browse mode, trigger API search
-                onSearchRequested?.invoke(text)
+            if (currentFilterMode == FilterMode.BROWSE || currentFilterMode == FilterMode.ALL) {
+                // In Browse or All mode, trigger API search when text is not empty
+                if (text.isNotEmpty()) {
+                    onSearchRequested?.invoke(text)
+                } else {
+                    // Empty search - just apply local filters
+                    applyFilters()
+                }
             } else {
                 // In other modes, filter locally
                 applyFilters()
@@ -331,30 +337,58 @@ class PackageListPanel(
         listModel.clear()
 
         when (currentFilterMode) {
-            FilterMode.INSTALLED, FilterMode.ALL -> {
-                // Separate direct and transitive dependencies
-                val directDeps = packages.filter { !it.isTransitive }
-                val transitiveDeps = packages.filter { it.isTransitive }
+            FilterMode.INSTALLED -> {
+                // Separate direct and transitive dependencies (only installed)
+                val installedDirect = packages.filter { it.isInstalled && !it.isTransitive }
+                val installedTransitive = packages.filter { it.isInstalled && it.isTransitive }
 
                 // Add "Installed Packages" section
-                if (directDeps.isNotEmpty()) {
+                if (installedDirect.isNotEmpty()) {
                     listModel.addElement(ListItem.SectionHeader(
                         message("unified.list.section.installed"),
-                        directDeps.size
+                        installedDirect.size
                     ))
-                    directDeps.forEach { pkg ->
+                    installedDirect.forEach { pkg ->
                         listModel.addElement(ListItem.PackageItem(pkg))
                     }
                 }
 
                 // Add "Implicitly Installed (Transitive)" section
-                if (transitiveDeps.isNotEmpty()) {
+                if (installedTransitive.isNotEmpty()) {
                     listModel.addElement(ListItem.SectionHeader(
                         message("unified.list.section.transitive"),
-                        transitiveDeps.size,
+                        installedTransitive.size,
                         message("unified.list.learn.more")
                     ))
-                    transitiveDeps.forEach { pkg ->
+                    installedTransitive.forEach { pkg ->
+                        listModel.addElement(ListItem.PackageItem(pkg))
+                    }
+                }
+            }
+
+            FilterMode.ALL -> {
+                // Show ALL packages: installed + search results
+                val installed = packages.filter { it.isInstalled }
+                val searchResults = packages.filter { !it.isInstalled }
+
+                // Add "Installed" section
+                if (installed.isNotEmpty()) {
+                    listModel.addElement(ListItem.SectionHeader(
+                        message("unified.list.section.installed"),
+                        installed.size
+                    ))
+                    installed.forEach { pkg ->
+                        listModel.addElement(ListItem.PackageItem(pkg))
+                    }
+                }
+
+                // Add "Available" section for search results
+                if (searchResults.isNotEmpty()) {
+                    listModel.addElement(ListItem.SectionHeader(
+                        "Available",
+                        searchResults.size
+                    ))
+                    searchResults.forEach { pkg ->
                         listModel.addElement(ListItem.PackageItem(pkg))
                     }
                 }
@@ -373,9 +407,15 @@ class PackageListPanel(
             }
 
             FilterMode.BROWSE -> {
-                // No section headers for search results
-                packages.forEach { pkg ->
-                    listModel.addElement(ListItem.PackageItem(pkg))
+                // Show search results with optional section header
+                if (packages.isNotEmpty()) {
+                    listModel.addElement(ListItem.SectionHeader(
+                        "Search Results",
+                        packages.size
+                    ))
+                    packages.forEach { pkg ->
+                        listModel.addElement(ListItem.PackageItem(pkg))
+                    }
                 }
             }
         }
@@ -516,7 +556,7 @@ class PackageListPanel(
      * Panel for rendering package items.
      */
     private inner class PackageItemPanel : JPanel(BorderLayout()) {
-        private val iconLabel = JBLabel()
+        private val iconLabel = UpdateIndicatorLabel()
         private val nameLabel = JBLabel()
         private val publisherLabel = JBLabel()
         private val descriptionLabel = JBLabel()
@@ -527,7 +567,7 @@ class PackageListPanel(
             border = JBUI.Borders.empty(8, 8, 8, 8)
             isOpaque = true
 
-            // Left: Icon
+            // Left: Icon with update indicator overlay
             iconLabel.apply {
                 icon = AllIcons.Nodes.PpLib
                 border = JBUI.Borders.emptyRight(8)
@@ -616,14 +656,67 @@ class PackageListPanel(
             versionBadge.text = version
             versionBadge.isVisible = version.isNotEmpty()
 
-            // Update badge
+            // Update badge and indicator
             val hasUpdate = pkg.installedVersion != null && pkg.latestVersion != null &&
                 pkg.installedVersion != pkg.latestVersion
+            iconLabel.showUpdateIndicator = hasUpdate
             if (hasUpdate) {
                 updateBadge.text = "↑ ${pkg.latestVersion}"
                 updateBadge.isVisible = true
             } else {
                 updateBadge.isVisible = false
+            }
+        }
+    }
+
+    /**
+     * Custom JLabel that can overlay a diagonal update arrow on its icon.
+     */
+    private class UpdateIndicatorLabel : JBLabel() {
+        var showUpdateIndicator: Boolean = false
+
+        override fun paintComponent(g: Graphics) {
+            super.paintComponent(g)
+
+            if (showUpdateIndicator && icon != null) {
+                val g2d = g.create() as Graphics2D
+                g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
+
+                // Draw a small diagonal arrow in the bottom-right corner of the icon
+                val iconWidth = icon.iconWidth
+                val iconHeight = icon.iconHeight
+
+                // Arrow position (bottom-right corner)
+                val arrowSize = 8
+                val arrowX = iconWidth - arrowSize + 2
+                val arrowY = iconHeight - arrowSize + 2
+
+                // Draw arrow background circle
+                g2d.color = JBColor(0x4CAF50, 0x81C784) // Green
+                g2d.fillOval(arrowX - 1, arrowY - 1, arrowSize + 2, arrowSize + 2)
+
+                // Draw diagonal arrow pointing up-right
+                g2d.color = Color.WHITE
+                g2d.stroke = BasicStroke(1.5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND)
+
+                val path = Path2D.Float()
+                val cx = arrowX + arrowSize / 2f
+                val cy = arrowY + arrowSize / 2f
+                val offset = 2.5f
+
+                // Arrow line (diagonal)
+                path.moveTo((cx - offset).toDouble(), (cy + offset).toDouble())
+                path.lineTo((cx + offset).toDouble(), (cy - offset).toDouble())
+                g2d.draw(path)
+
+                // Arrow head
+                val headPath = Path2D.Float()
+                headPath.moveTo((cx + offset - 2).toDouble(), (cy - offset).toDouble())
+                headPath.lineTo((cx + offset).toDouble(), (cy - offset).toDouble())
+                headPath.lineTo((cx + offset).toDouble(), (cy - offset + 2).toDouble())
+                g2d.draw(headPath)
+
+                g2d.dispose()
             }
         }
     }

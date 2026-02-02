@@ -160,7 +160,7 @@ class RepositoryManagerDialog(
     private fun testConnection() {
         val selected = repositoryList.selectedValue ?: return
 
-        // Simple HTTP HEAD request to test
+        // HTTP HEAD request with authentication
         try {
             val url = java.net.URL(selected.url.trimEnd('/') + "/")
             val connection = url.openConnection() as java.net.HttpURLConnection
@@ -168,19 +168,36 @@ class RepositoryManagerDialog(
             connection.connectTimeout = 5000
             connection.readTimeout = 5000
 
+            // Add authentication if credentials are available
+            if (selected.username != null || selected.password != null) {
+                val credentials = "${selected.username ?: ""}:${selected.password ?: ""}"
+                val encoded = java.util.Base64.getEncoder().encodeToString(credentials.toByteArray())
+                connection.setRequestProperty("Authorization", "Basic $encoded")
+            }
+
             val responseCode = connection.responseCode
             connection.disconnect()
 
             if (responseCode in 200..399) {
+                val authInfo = if (selected.username != null || selected.password != null) {
+                    " (authenticated)"
+                } else {
+                    " (no credentials)"
+                }
                 Messages.showInfoMessage(
                     project,
-                    message("unified.repo.manager.test.success", selected.name),
+                    message("unified.repo.manager.test.success", selected.name) + authInfo,
                     message("unified.repo.manager.test.title")
                 )
             } else {
+                val hint = when (responseCode) {
+                    401, 403 -> "\n\nHint: Authentication failed. Check your credentials."
+                    404 -> "\n\nHint: Repository URL may be incorrect."
+                    else -> ""
+                }
                 Messages.showWarningDialog(
                     project,
-                    message("unified.repo.manager.test.failed", responseCode),
+                    message("unified.repo.manager.test.failed", responseCode) + hint,
                     message("unified.repo.manager.test.title")
                 )
             }
@@ -210,6 +227,14 @@ class RepositoryManagerDialog(
                         )
                         if (previewDialog.showAndGet()) {
                             configWriter.applyGradleChanges(targetFile, modified, "Add Repository: ${repo.name}")
+                            // Show info about credentials if saved
+                            if (repo.username != null || repo.password != null) {
+                                Messages.showInfoMessage(
+                                    project,
+                                    "Repository added to ${targetFile.name}.\nCredentials saved to ~/.gradle/gradle.properties",
+                                    message("unified.repo.manager.add.title")
+                                )
+                            }
                             loadRepositories()
                         }
                     } else {
@@ -221,7 +246,7 @@ class RepositoryManagerDialog(
                     }
                 }
             }
-            SaveTarget.MAVEN -> {
+            SaveTarget.MAVEN_SETTINGS -> {
                 val result = configWriter.getMavenRepositoryAddition(repo)
                 if (result != null) {
                     val (original, modified) = result
@@ -245,6 +270,53 @@ class RepositoryManagerDialog(
                         configWriter.applyMavenChanges(modified)
                         loadRepositories()
                     }
+                }
+            }
+            SaveTarget.MAVEN_POM -> {
+                val pomFile = configWriter.getRootPomFile()
+                if (pomFile != null) {
+                    val result = configWriter.getPomRepositoryAddition(repo, pomFile)
+                    if (result != null) {
+                        val (original, modified) = result
+                        val previewDialog = PreviewDiffDialog(
+                            project,
+                            pomFile.path,
+                            original,
+                            modified,
+                            message("unified.repo.manager.preview.title")
+                        )
+                        if (previewDialog.showAndGet()) {
+                            configWriter.applyPomChanges(pomFile, modified, "Add Repository: ${repo.name}")
+                            // Also save credentials to settings.xml if provided
+                            if (repo.username != null || repo.password != null) {
+                                val settingsResult = configWriter.getMavenRepositoryAddition(
+                                    repo.copy(url = "") // Only add credentials, not the repo itself
+                                )
+                                // Just save credentials to settings.xml silently
+                                if (settingsResult != null) {
+                                    configWriter.applyMavenChanges(settingsResult.second)
+                                }
+                                Messages.showInfoMessage(
+                                    project,
+                                    "Repository added to pom.xml.\nCredentials saved to ~/.m2/settings.xml",
+                                    message("unified.repo.manager.add.title")
+                                )
+                            }
+                            loadRepositories()
+                        }
+                    } else {
+                        Messages.showInfoMessage(
+                            project,
+                            message("unified.repo.manager.already.exists"),
+                            message("unified.repo.manager.add.title")
+                        )
+                    }
+                } else {
+                    Messages.showErrorDialog(
+                        project,
+                        "No pom.xml found in project root.",
+                        message("unified.repo.manager.add.title")
+                    )
                 }
             }
             SaveTarget.PLUGIN_ONLY -> {
@@ -307,18 +379,23 @@ class RepositoryManagerDialog(
  * Save target for new repositories.
  */
 enum class SaveTarget {
-    GRADLE,      // Save to settings.gradle or build.gradle
-    MAVEN,       // Save to ~/.m2/settings.xml
-    PLUGIN_ONLY  // Save only in plugin settings (won't affect CLI builds)
+    GRADLE,         // Save to settings.gradle or build.gradle
+    MAVEN_SETTINGS, // Save to ~/.m2/settings.xml
+    MAVEN_POM,      // Save to project's pom.xml
+    PLUGIN_ONLY     // Save only in plugin settings (won't affect CLI builds)
 }
 
 /**
  * Dialog for adding or editing a repository.
  */
-private class AddEditRepositoryDialog(
+internal class AddEditRepositoryDialog(
     private val project: Project,
     private val existingRepo: RepositoryConfig?
 ) : DialogWrapper(project) {
+
+    private val configWriter = RepositoryConfigWriter.getInstance(project)
+    private val isGradleProject = configWriter.isGradleProject()
+    private val isMavenProject = configWriter.isMavenProject()
 
     private val propertyGraph = PropertyGraph()
 
@@ -334,7 +411,13 @@ private class AddEditRepositoryDialog(
     private val passwordProperty = propertyGraph.property(existingRepo?.password ?: "")
     private var password by passwordProperty
 
-    private val saveTargetProperty = propertyGraph.property(SaveTarget.GRADLE)
+    // Default to the most appropriate target based on project type
+    private val defaultTarget = when {
+        isGradleProject -> SaveTarget.GRADLE
+        isMavenProject -> SaveTarget.MAVEN_POM
+        else -> SaveTarget.MAVEN_SETTINGS
+    }
+    private val saveTargetProperty = propertyGraph.property(defaultTarget)
     var saveTarget by saveTargetProperty
 
     private val typeProperty = propertyGraph.property(existingRepo?.type ?: RepositoryType.MAVEN)
@@ -385,19 +468,33 @@ private class AddEditRepositoryDialog(
                         .bindText(passwordProperty)
                         .columns(COLUMNS_MEDIUM)
                 }
+                row {
+                    comment("For Azure Artifacts, use your PAT as the password. Username can be empty or any value.")
+                }
             }
 
             separator()
 
             if (existingRepo == null) {
                 buttonsGroup(message("unified.repo.dialog.save.to")) {
-                    row {
-                        radioButton(message("unified.repo.dialog.save.gradle"), SaveTarget.GRADLE)
-                            .comment(message("unified.repo.dialog.save.gradle.comment"))
+                    // Show Gradle option if it's a Gradle project
+                    if (isGradleProject) {
+                        row {
+                            radioButton("Gradle (build.gradle)", SaveTarget.GRADLE)
+                                .comment("Add to repositories { } block. Credentials saved to ~/.gradle/gradle.properties")
+                        }
                     }
+                    // Show pom.xml option if it's a Maven project
+                    if (isMavenProject) {
+                        row {
+                            radioButton("Maven (pom.xml)", SaveTarget.MAVEN_POM)
+                                .comment("Add to <repositories> in pom.xml. Credentials saved to ~/.m2/settings.xml")
+                        }
+                    }
+                    // Always show settings.xml option
                     row {
-                        radioButton(message("unified.repo.dialog.save.maven"), SaveTarget.MAVEN)
-                            .comment(message("unified.repo.dialog.save.maven.comment"))
+                        radioButton("Maven Global (~/.m2/settings.xml)", SaveTarget.MAVEN_SETTINGS)
+                            .comment("Add to global Maven settings. Works for both Maven and Gradle projects.")
                     }
                     row {
                         radioButton(message("unified.repo.dialog.save.plugin"), SaveTarget.PLUGIN_ONLY)
@@ -412,7 +509,7 @@ private class AddEditRepositoryDialog(
         if (name.isBlank() || url.isBlank()) return null
 
         return RepositoryConfig(
-            id = name.lowercase().replace(" ", "-"),
+            id = name.lowercase().replace(" ", "-").replace(Regex("[^a-z0-9-]"), ""),
             name = name,
             url = url.trimEnd('/'),
             type = type,
@@ -425,7 +522,7 @@ private class AddEditRepositoryDialog(
 /**
  * Cell renderer for the repository list.
  */
-private class RepositoryListCellRenderer : DefaultListCellRenderer() {
+internal class RepositoryListCellRenderer : DefaultListCellRenderer() {
     override fun getListCellRendererComponent(
         list: JList<*>?,
         value: Any?,

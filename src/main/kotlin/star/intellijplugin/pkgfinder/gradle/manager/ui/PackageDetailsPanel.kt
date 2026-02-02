@@ -19,6 +19,7 @@ import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import star.intellijplugin.pkgfinder.PackageFinderBundle.message
 import star.intellijplugin.pkgfinder.gradle.manager.GradleDependencyModifier
+import star.intellijplugin.pkgfinder.gradle.manager.model.AvailableRepository
 import star.intellijplugin.pkgfinder.gradle.manager.model.PackageMetadata
 import star.intellijplugin.pkgfinder.gradle.manager.model.PackageSource
 import star.intellijplugin.pkgfinder.gradle.manager.model.UnifiedPackage
@@ -69,18 +70,43 @@ class PackageDetailsPanel(
         isVisible = false
     }
 
+    // === VERSION SELECTOR ===
+    private val versionSelectorPanel = JPanel(FlowLayout(FlowLayout.LEFT, 4, 0)).apply {
+        isVisible = false
+    }
+    private val versionComboBox = JComboBox<VersionItem>().apply {
+        preferredSize = Dimension(150, preferredSize.height)
+        renderer = VersionListCellRenderer()
+    }
+    private var isLoadingVersions = false
+
+    /**
+     * Version item with update indicator support.
+     */
+    data class VersionItem(
+        val version: String,
+        val hasUpdateIndicator: Boolean = false,
+        val isInstalled: Boolean = false
+    ) {
+        override fun toString(): String = version
+    }
+
     // === DESCRIPTION SECTION ===
     private val descriptionLabel = JBLabel().apply {
         font = font.deriveFont(Font.BOLD, 12f)
         text = message("unified.details.section.description")
     }
-    private val descriptionText = JTextArea().apply {
+    private val descriptionPane = JEditorPane().apply {
+        contentType = "text/html"
         isEditable = false
-        lineWrap = true
-        wrapStyleWord = true
         background = UIUtil.getPanelBackground()
         border = JBUI.Borders.empty(4)
-        font = UIUtil.getLabelFont()
+        // Allow hyperlinks
+        addHyperlinkListener { e ->
+            if (e.eventType == javax.swing.event.HyperlinkEvent.EventType.ACTIVATED) {
+                BrowserUtil.browse(e.url)
+            }
+        }
     }
     private val publisherLabel = JBLabel()
 
@@ -92,6 +118,30 @@ class PackageDetailsPanel(
     private val modulesValueLabel = JBLabel()
     private val licenseValueLabel = JBLabel()
     private val sourceValueLabel = JBLabel()
+
+    // === SOURCE REPOSITORY SELECTOR ===
+    private val sourceRepoPanel = JPanel(FlowLayout(FlowLayout.LEFT, 0, 0)).apply {
+        isVisible = false
+    }
+    private val sourceRepoComboBox = JComboBox<AvailableRepository>().apply {
+        renderer = object : DefaultListCellRenderer() {
+            override fun getListCellRendererComponent(
+                list: JList<*>?,
+                value: Any?,
+                index: Int,
+                isSelected: Boolean,
+                cellHasFocus: Boolean
+            ): java.awt.Component {
+                super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus)
+                if (value is AvailableRepository) {
+                    text = "${value.name} ${value.version?.let { "($it)" } ?: ""}"
+                    icon = AllIcons.Nodes.PpLib
+                }
+                return this
+            }
+        }
+    }
+    private var selectedSourceRepo: AvailableRepository? = null
 
     // === DEPENDENCIES SECTION (Expandable) ===
     private val dependenciesPanel = JPanel(BorderLayout()).apply {
@@ -166,7 +216,8 @@ class PackageDetailsPanel(
     private var availableVersions: List<String> = emptyList()
 
     // Callbacks
-    var onInstallRequested: ((UnifiedPackage, String, String, String) -> Unit)? = null
+    // Parameters: package, version, module, configuration, sourceRepoUrl (optional)
+    var onInstallRequested: ((UnifiedPackage, String, String, String, String?) -> Unit)? = null
     var onUpdateRequested: ((UnifiedPackage, String) -> Unit)? = null
     var onDowngradeRequested: ((UnifiedPackage, String) -> Unit)? = null
     var onUninstallRequested: ((UnifiedPackage) -> Unit)? = null
@@ -206,10 +257,11 @@ class PackageDetailsPanel(
         mainPanel.layout = BoxLayout(mainPanel, BoxLayout.Y_AXIS)
 
         // === HEADER ===
+        setupVersionSelector()
         val headerPanel = JPanel(BorderLayout()).apply {
             border = JBUI.Borders.emptyBottom(16)
             alignmentX = Component.LEFT_ALIGNMENT
-            maximumSize = Dimension(Int.MAX_VALUE, 80)
+            maximumSize = Dimension(Int.MAX_VALUE, 100)
 
             val nameVersionPanel = JPanel().apply {
                 layout = BoxLayout(this, BoxLayout.Y_AXIS)
@@ -223,6 +275,10 @@ class PackageDetailsPanel(
                     add(notInstalledLabel)
                 }
                 add(versionRow)
+
+                // Add version selector row
+                add(Box.createVerticalStrut(4))
+                add(versionSelectorPanel)
             }
             add(nameVersionPanel, BorderLayout.CENTER)
             add(loadingLabel, BorderLayout.EAST)
@@ -232,11 +288,11 @@ class PackageDetailsPanel(
         val descriptionPanel = JPanel(BorderLayout()).apply {
             border = JBUI.Borders.emptyBottom(12)
             alignmentX = Component.LEFT_ALIGNMENT
-            maximumSize = Dimension(Int.MAX_VALUE, 120)
+            maximumSize = Dimension(Int.MAX_VALUE, 150)
 
             add(descriptionLabel, BorderLayout.NORTH)
-            val descScroll = JBScrollPane(descriptionText).apply {
-                preferredSize = Dimension(0, 80)
+            val descScroll = JBScrollPane(descriptionPane).apply {
+                preferredSize = Dimension(0, 100)
                 border = JBUI.Borders.empty()
             }
             add(descScroll, BorderLayout.CENTER)
@@ -254,6 +310,11 @@ class PackageDetailsPanel(
             add(Box.createHorizontalStrut(8))
             add(publisherLabel)
         }
+
+        // === SOURCE REPOSITORY SELECTOR ===
+        setupSourceRepoPanel()
+        sourceRepoPanel.alignmentX = Component.LEFT_ALIGNMENT
+        sourceRepoPanel.maximumSize = Dimension(Int.MAX_VALUE, 40)
 
         // === METADATA GRID ===
         val metadataPanel = createMetadataGrid().apply {
@@ -300,6 +361,7 @@ class PackageDetailsPanel(
         mainPanel.add(headerPanel)
         mainPanel.add(descriptionPanel)
         mainPanel.add(publisherPanel)
+        mainPanel.add(sourceRepoPanel)
         mainPanel.add(metadataPanel)
         mainPanel.add(Box.createVerticalStrut(12))
         mainPanel.add(dependenciesPanel)
@@ -366,6 +428,327 @@ class PackageDetailsPanel(
         return JBLabel(text).apply {
             foreground = labelColor
             border = JBUI.Borders.emptyRight(16)
+        }
+    }
+
+    private fun setupVersionSelector() {
+        versionSelectorPanel.add(JBLabel("Version:").apply {
+            foreground = labelColor
+            border = JBUI.Borders.emptyRight(8)
+        })
+        versionSelectorPanel.add(versionComboBox)
+        versionSelectorPanel.add(Box.createHorizontalStrut(8))
+
+        // Add loading spinner for versions
+        val versionsLoadingLabel = JBLabel().apply {
+            icon = AllIcons.Process.Step_1
+            isVisible = false
+        }
+        versionSelectorPanel.add(versionsLoadingLabel)
+    }
+
+    private fun setupSourceRepoPanel() {
+        sourceRepoPanel.border = JBUI.Borders.emptyBottom(12)
+
+        sourceRepoPanel.add(JBLabel("Install from:").apply {
+            foreground = labelColor
+            border = JBUI.Borders.emptyRight(8)
+        })
+        sourceRepoPanel.add(sourceRepoComboBox.apply {
+            preferredSize = Dimension(200, preferredSize.height)
+        })
+
+        sourceRepoComboBox.addActionListener {
+            selectedSourceRepo = sourceRepoComboBox.selectedItem as? AvailableRepository
+        }
+    }
+
+    /**
+     * Load available versions for the current package.
+     */
+    private fun loadAvailableVersions(pkg: UnifiedPackage) {
+        if (isLoadingVersions) return
+
+        isLoadingVersions = true
+        versionComboBox.removeAllItems()
+        versionComboBox.addItem(VersionItem("Loading...", false, false))
+
+        onVersionsNeeded?.invoke(pkg) { versions ->
+            SwingUtilities.invokeLater {
+                isLoadingVersions = false
+                versionComboBox.removeAllItems()
+
+                if (versions.isNotEmpty()) {
+                    val currentVersion = pkg.installedVersion
+                    for (version in versions) {
+                        val isInstalled = version == currentVersion
+                        // Show update indicator for versions newer than installed
+                        val hasUpdate = currentVersion != null && isVersionNewer(version, currentVersion)
+                        versionComboBox.addItem(VersionItem(version, hasUpdate, isInstalled))
+                    }
+
+                    // Select installed version or latest
+                    val selectedIndex = versions.indexOfFirst { it == currentVersion }.takeIf { it >= 0 } ?: 0
+                    versionComboBox.selectedIndex = selectedIndex
+                } else {
+                    val latestVersion = pkg.latestVersion ?: pkg.installedVersion ?: "N/A"
+                    versionComboBox.addItem(VersionItem(latestVersion, false, pkg.installedVersion == latestVersion))
+                }
+
+                availableVersions = versions
+                versionSelectorPanel.isVisible = versions.size > 1 || !pkg.isInstalled
+            }
+        }
+    }
+
+    /**
+     * Check if v1 is newer than v2 using semantic version comparison.
+     */
+    private fun isVersionNewer(v1: String, v2: String): Boolean {
+        val parts1 = v1.split("[.\\-_]".toRegex()).mapNotNull { it.takeWhile { c -> c.isDigit() }.toIntOrNull() }
+        val parts2 = v2.split("[.\\-_]".toRegex()).mapNotNull { it.takeWhile { c -> c.isDigit() }.toIntOrNull() }
+
+        for (i in 0 until maxOf(parts1.size, parts2.size)) {
+            val p1 = parts1.getOrElse(i) { 0 }
+            val p2 = parts2.getOrElse(i) { 0 }
+            if (p1 > p2) return true
+            if (p1 < p2) return false
+        }
+        return false
+    }
+
+    /**
+     * Custom renderer for version dropdown with update indicator.
+     */
+    private inner class VersionListCellRenderer : DefaultListCellRenderer() {
+        override fun getListCellRendererComponent(
+            list: JList<*>?,
+            value: Any?,
+            index: Int,
+            isSelected: Boolean,
+            cellHasFocus: Boolean
+        ): Component {
+            super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus)
+
+            if (value is VersionItem) {
+                text = buildString {
+                    append(value.version)
+                    if (value.isInstalled) append(" (installed)")
+                }
+
+                // Show update indicator (green arrow) for newer versions
+                if (value.hasUpdateIndicator) {
+                    icon = AllIcons.General.ArrowUp
+                    foreground = if (isSelected) foreground else JBColor(0x4CAF50, 0x81C784)
+                } else if (value.isInstalled) {
+                    icon = AllIcons.Actions.Checked
+                } else {
+                    icon = null
+                }
+            }
+
+            return this
+        }
+    }
+
+    /**
+     * Set the description text, converting markdown to HTML for proper rendering.
+     */
+    private fun setDescriptionText(text: String) {
+        val html = markdownToHtml(text)
+        val styledHtml = wrapInHtmlStyle(html)
+        descriptionPane.text = styledHtml
+        descriptionPane.caretPosition = 0 // Scroll to top
+    }
+
+    /**
+     * Convert simple markdown to HTML.
+     * Supports: headers, bold, italic, code, links, lists, horizontal rules.
+     */
+    private fun markdownToHtml(markdown: String): String {
+        var text = markdown
+            // Normalize line endings
+            .replace("\\n", "\n")
+            .replace("\r\n", "\n")
+            .replace("\r", "\n")
+
+        // Escape HTML special characters first (but not our markdown)
+        text = text
+            .replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+
+        // Process line by line for block elements
+        val lines = text.split("\n")
+        val result = StringBuilder()
+        var inCodeBlock = false
+        var inList = false
+        var listType = ""
+
+        for (line in lines) {
+            var processedLine = line
+
+            // Code blocks (```)
+            if (processedLine.trim().startsWith("```")) {
+                if (inCodeBlock) {
+                    result.append("</pre>")
+                    inCodeBlock = false
+                } else {
+                    result.append("<pre style='background-color:#f5f5f5;padding:8px;border-radius:4px;font-family:monospace;'>")
+                    inCodeBlock = true
+                }
+                continue
+            }
+
+            if (inCodeBlock) {
+                result.append(processedLine).append("\n")
+                continue
+            }
+
+            // Setext-style headers (underlined with === or ---)
+            if (processedLine.matches(Regex("^=+\\s*$")) && result.isNotEmpty()) {
+                // H1 - replace previous line
+                val lastNewline = result.lastIndexOf("\n")
+                if (lastNewline >= 0) {
+                    val prevLine = result.substring(lastNewline + 1)
+                    result.setLength(lastNewline + 1)
+                    result.append("<h2 style='margin:8px 0;border-bottom:1px solid #ccc;'>$prevLine</h2>")
+                }
+                continue
+            }
+            if (processedLine.matches(Regex("^-+\\s*$")) && result.isNotEmpty()) {
+                // H2 - replace previous line
+                val lastNewline = result.lastIndexOf("\n")
+                if (lastNewline >= 0) {
+                    val prevLine = result.substring(lastNewline + 1)
+                    result.setLength(lastNewline + 1)
+                    result.append("<h3 style='margin:6px 0;'>$prevLine</h3>")
+                }
+                continue
+            }
+
+            // ATX-style headers (# Header)
+            processedLine = processedLine
+                .replace(Regex("^######\\s+(.+)$"), "<h6 style='margin:4px 0;'>$1</h6>")
+                .replace(Regex("^#####\\s+(.+)$"), "<h5 style='margin:4px 0;'>$1</h5>")
+                .replace(Regex("^####\\s+(.+)$"), "<h4 style='margin:5px 0;'>$1</h4>")
+                .replace(Regex("^###\\s+(.+)$"), "<h3 style='margin:6px 0;'>$1</h3>")
+                .replace(Regex("^##\\s+(.+)$"), "<h2 style='margin:8px 0;border-bottom:1px solid #ccc;'>$1</h2>")
+                .replace(Regex("^#\\s+(.+)$"), "<h1 style='margin:10px 0;border-bottom:2px solid #ccc;'>$1</h1>")
+
+            // Horizontal rules
+            if (processedLine.matches(Regex("^(\\*{3,}|-{3,}|_{3,})\\s*$"))) {
+                processedLine = "<hr style='border:none;border-top:1px solid #ccc;margin:8px 0;'/>"
+            }
+
+            // Unordered lists
+            if (processedLine.matches(Regex("^\\s*[-*+]\\s+.+"))) {
+                if (!inList || listType != "ul") {
+                    if (inList) result.append("</$listType>")
+                    result.append("<ul style='margin:4px 0;padding-left:20px;'>")
+                    inList = true
+                    listType = "ul"
+                }
+                processedLine = processedLine.replace(Regex("^\\s*[-*+]\\s+(.+)$"), "<li>$1</li>")
+            }
+            // Ordered lists
+            else if (processedLine.matches(Regex("^\\s*\\d+\\.\\s+.+"))) {
+                if (!inList || listType != "ol") {
+                    if (inList) result.append("</$listType>")
+                    result.append("<ol style='margin:4px 0;padding-left:20px;'>")
+                    inList = true
+                    listType = "ol"
+                }
+                processedLine = processedLine.replace(Regex("^\\s*\\d+\\.\\s+(.+)$"), "<li>$1</li>")
+            }
+            // Close list if not a list item
+            else if (inList && processedLine.isNotBlank()) {
+                result.append("</$listType>")
+                inList = false
+            }
+
+            // Inline formatting
+            processedLine = processedLine
+                // Bold (**text** or __text__)
+                .replace(Regex("\\*\\*(.+?)\\*\\*"), "<strong>$1</strong>")
+                .replace(Regex("__(.+?)__"), "<strong>$1</strong>")
+                // Italic (*text* or _text_)
+                .replace(Regex("(?<!\\*)\\*(?!\\*)(.+?)(?<!\\*)\\*(?!\\*)"), "<em>$1</em>")
+                .replace(Regex("(?<!_)_(?!_)(.+?)(?<!_)_(?!_)"), "<em>$1</em>")
+                // Inline code (`code`)
+                .replace(Regex("`([^`]+)`"), "<code style='background-color:#f0f0f0;padding:1px 4px;border-radius:3px;font-family:monospace;'>$1</code>")
+                // Links [text](url)
+                .replace(Regex("\\[([^\\]]+)\\]\\(([^)]+)\\)"), "<a href='$2'>$1</a>")
+
+            // Empty lines become paragraph breaks
+            if (processedLine.isBlank()) {
+                result.append("<br/>")
+            } else if (!processedLine.startsWith("<h") && !processedLine.startsWith("<li") &&
+                       !processedLine.startsWith("<hr") && !processedLine.startsWith("<ul") &&
+                       !processedLine.startsWith("<ol") && !processedLine.startsWith("<pre")) {
+                result.append(processedLine).append("<br/>")
+            } else {
+                result.append(processedLine)
+            }
+        }
+
+        // Close any open list
+        if (inList) {
+            result.append("</$listType>")
+        }
+        if (inCodeBlock) {
+            result.append("</pre>")
+        }
+
+        return result.toString()
+    }
+
+    /**
+     * Wrap HTML content with proper styling for the editor pane.
+     */
+    private fun wrapInHtmlStyle(content: String): String {
+        val isDark = !JBColor.isBright()
+        val textColor = if (isDark) "#bbbbbb" else "#333333"
+        val linkColor = if (isDark) "#589df6" else "#4a90d9"
+        val bgColor = if (isDark) "#2b2b2b" else "#ffffff"
+
+        return """
+            <html>
+            <head>
+                <style>
+                    body {
+                        font-family: '${UIUtil.getLabelFont().family}', sans-serif;
+                        font-size: ${UIUtil.getLabelFont().size}pt;
+                        color: $textColor;
+                        background-color: $bgColor;
+                        margin: 0;
+                        padding: 4px;
+                        line-height: 1.4;
+                    }
+                    a { color: $linkColor; text-decoration: none; }
+                    a:hover { text-decoration: underline; }
+                    h1, h2, h3, h4, h5, h6 { color: $textColor; font-weight: bold; }
+                    code { font-size: ${UIUtil.getLabelFont().size - 1}pt; }
+                    pre { font-size: ${UIUtil.getLabelFont().size - 1}pt; overflow-x: auto; }
+                </style>
+            </head>
+            <body>$content</body>
+            </html>
+        """.trimIndent()
+    }
+
+    private fun updateSourceRepoSelector(pkg: UnifiedPackage) {
+        sourceRepoComboBox.removeAllItems()
+
+        if (pkg.availableRepositories.isNotEmpty()) {
+            for (repo in pkg.availableRepositories) {
+                sourceRepoComboBox.addItem(repo)
+            }
+            sourceRepoPanel.isVisible = pkg.availableRepositories.size > 1 || !pkg.isInstalled
+            selectedSourceRepo = pkg.availableRepositories.firstOrNull()
+        } else {
+            sourceRepoPanel.isVisible = false
+            selectedSourceRepo = null
         }
     }
 
@@ -485,8 +868,8 @@ class PackageDetailsPanel(
             }
         }
 
-        // Basic metadata from package
-        descriptionText.text = pkg.description ?: message("unified.details.no.description")
+        // Basic metadata from package - render as markdown/HTML
+        setDescriptionText(pkg.description ?: message("unified.details.no.description"))
         publisherLabel.text = pkg.publisher
         groupValueLabel.text = pkg.publisher
         artifactValueLabel.text = pkg.name
@@ -507,8 +890,14 @@ class PackageDetailsPanel(
         // Build file info
         updateBuildFileInfo(pkg)
 
+        // Source repository selector
+        updateSourceRepoSelector(pkg)
+
         // Show dependencies section for installed packages
         dependenciesPanel.isVisible = true
+
+        // Load available versions for version dropdown
+        loadAvailableVersions(pkg)
 
         // Update button states
         updateButtonStates(pkg)
@@ -535,7 +924,7 @@ class PackageDetailsPanel(
     private fun updateWithFetchedDetails(details: PackageDetails) {
         // Update description if we got a better one
         details.description?.let { desc ->
-            descriptionText.text = desc
+            setDescriptionText(desc)
         }
 
         // Update publisher with organization name if available
@@ -716,19 +1105,26 @@ class PackageDetailsPanel(
             SwingUtilities.invokeLater {
                 availableVersions = versions.ifEmpty { listOfNotNull(pkg.latestVersion) }
                 val modules = onModulesNeeded?.invoke() ?: listOf("app")
+
+                // Use the selected source repository
+                val sourceRepo = selectedSourceRepo
+
                 val dialog = InstallPackageDialog(
                     project,
                     pkg,
                     availableVersions,
                     modules,
-                    getAvailableConfigurations()
+                    getAvailableConfigurations(),
+                    pkg.availableRepositories,
+                    sourceRepo
                 )
                 if (dialog.showAndGet()) {
                     onInstallRequested?.invoke(
                         pkg,
                         dialog.selectedVersion,
                         dialog.selectedModule,
-                        dialog.selectedConfiguration
+                        dialog.selectedConfiguration,
+                        dialog.selectedSourceRepo?.url
                     )
                 }
             }
@@ -817,7 +1213,9 @@ private class InstallPackageDialog(
     private val pkg: UnifiedPackage,
     private val versions: List<String>,
     private val modules: List<String>,
-    private val configurations: List<String>
+    private val configurations: List<String>,
+    private val availableRepos: List<AvailableRepository>,
+    defaultRepo: AvailableRepository?
 ) : com.intellij.openapi.ui.DialogWrapper(project) {
 
     private val propertyGraph = PropertyGraph()
@@ -830,6 +1228,8 @@ private class InstallPackageDialog(
 
     val selectedConfigurationProperty = propertyGraph.property("implementation")
     var selectedConfiguration by selectedConfigurationProperty
+
+    var selectedSourceRepo: AvailableRepository? = defaultRepo ?: availableRepos.firstOrNull()
 
     init {
         title = message("unified.details.install.title")
@@ -844,6 +1244,26 @@ private class InstallPackageDialog(
             row(message("unified.details.label.artifact")) {
                 label(pkg.name)
             }
+
+            // Show source repository selector if multiple repos available
+            if (availableRepos.size > 1) {
+                row("Source Repository:") {
+                    val repoNames = availableRepos.map { "${it.name} ${it.version?.let { v -> "($v)" } ?: ""}" }
+                    comboBox(repoNames).applyToComponent {
+                        selectedIndex = availableRepos.indexOfFirst { it.id == selectedSourceRepo?.id }.coerceAtLeast(0)
+                        addActionListener {
+                            selectedSourceRepo = availableRepos.getOrNull(selectedIndex)
+                        }
+                    }
+                }
+            } else if (availableRepos.size == 1) {
+                row("Source Repository:") {
+                    label(availableRepos.first().name).applyToComponent {
+                        foreground = JBColor.GRAY
+                    }
+                }
+            }
+
             row(message("unified.details.label.version")) {
                 comboBox(versions).bindItem(selectedVersionProperty)
             }

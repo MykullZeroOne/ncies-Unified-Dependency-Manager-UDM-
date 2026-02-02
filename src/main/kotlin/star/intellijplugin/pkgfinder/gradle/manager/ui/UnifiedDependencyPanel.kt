@@ -40,6 +40,17 @@ class UnifiedDependencyPanel(
     private val project: Project,
     private val parentDisposable: Disposable
 ) {
+    companion object {
+        // Sentinel value for "All Repositories" option - must be in companion object
+        // to be initialized before init block runs
+        val ALL_REPOSITORIES_OPTION = RepositoryConfig(
+            id = "__all__",
+            name = "All Repositories",
+            url = "",
+            type = RepositoryType.CUSTOM
+        )
+    }
+
     private val log = Logger.getInstance(javaClass)
     private val uiLog by lazy { PluginLogService.getInstance(project) }
 
@@ -166,17 +177,10 @@ class UnifiedDependencyPanel(
                 font = font.deriveFont(java.awt.Font.BOLD, 14f)
             }
 
-            // Right: Search Repo selector + Module selector + Settings button
+            // Right: Module selector + Settings button
+            // Note: Search repo selector is only in the filter bar to avoid Swing component issues
+            // (a component can only be in one container at a time)
             val rightPanel = JPanel(FlowLayout(FlowLayout.RIGHT, 8, 0)).apply {
-                // Search repository selector
-                add(JBLabel(message("unified.panel.search.repo")))
-                add(searchRepoSelector.apply {
-                    preferredSize = java.awt.Dimension(180, preferredSize.height)
-                    renderer = RepositoryComboRenderer()
-                })
-
-                add(Box.createHorizontalStrut(12))
-
                 // Module selector
                 add(JBLabel(message("unified.panel.module")))
                 add(moduleSelector.apply {
@@ -205,6 +209,12 @@ class UnifiedDependencyPanel(
             super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus)
             if (value is RepositoryConfig) {
                 text = value.name
+                // Show icon for "All Repositories"
+                icon = if (value.id == ALL_REPOSITORIES_OPTION.id) {
+                    AllIcons.Actions.Search
+                } else {
+                    null
+                }
             }
             return this
         }
@@ -254,8 +264,8 @@ class UnifiedDependencyPanel(
         }
 
         // Details panel callbacks
-        detailsPanel.onInstallRequested = { pkg, version, module, configuration ->
-            performInstall(pkg, version, module, configuration)
+        detailsPanel.onInstallRequested = { pkg, version, module, configuration, sourceRepoUrl ->
+            performInstall(pkg, version, module, configuration, sourceRepoUrl)
         }
 
         detailsPanel.onUpdateRequested = { pkg, newVersion ->
@@ -312,14 +322,46 @@ class UnifiedDependencyPanel(
             .filter { it.type != RepositoryType.NPM && it.type != RepositoryType.GRADLE_PLUGIN_PORTAL }
             .filter { it.enabled }
 
+        uiLog.info("Populating search repo selector with ${searchableRepos.size} repositories", "Init")
+
+        // Add "All Repositories" option first
+        searchRepoSelector.addItem(ALL_REPOSITORIES_OPTION)
+        uiLog.debug("Added 'All Repositories' option (id=${ALL_REPOSITORIES_OPTION.id})", "Init")
+
         for (repo in searchableRepos) {
             searchRepoSelector.addItem(repo)
+            val hasAuth = repo.username != null || repo.password != null
+            val authInfo = if (hasAuth) {
+                "HAS CREDENTIALS (user=${repo.username ?: "null"}, pw=${repo.password?.let { "${it.length} chars" } ?: "null"})"
+            } else {
+                "NO CREDENTIALS"
+            }
+            uiLog.info("Repository: ${repo.name} | id='${repo.id}' | type=${repo.type} | source=${repo.source} | $authInfo", "Init")
         }
 
-        // Select Maven Central by default if available
-        val mavenCentral = searchableRepos.find { it.type == RepositoryType.MAVEN_CENTRAL }
-        if (mavenCentral != null) {
-            searchRepoSelector.selectedItem = mavenCentral
+        // Select "All Repositories" by default
+        searchRepoSelector.selectedItem = ALL_REPOSITORIES_OPTION
+
+        // Verify selection
+        val selected = searchRepoSelector.selectedItem
+        uiLog.info("Search repo selector initialized. Total items: ${searchRepoSelector.itemCount}, Selected: ${(selected as? RepositoryConfig)?.name ?: "null"}", "Init")
+    }
+
+    /**
+     * Refresh the repository selector (call this after adding new repositories).
+     */
+    fun refreshRepositories() {
+        val currentSelection = searchRepoSelector.selectedItem
+        populateSearchRepoSelector()
+        // Try to restore previous selection
+        if (currentSelection != null) {
+            for (i in 0 until searchRepoSelector.itemCount) {
+                val item = searchRepoSelector.getItemAt(i)
+                if (item.id == (currentSelection as? RepositoryConfig)?.id) {
+                    searchRepoSelector.selectedItem = item
+                    break
+                }
+            }
         }
     }
 
@@ -416,12 +458,46 @@ class UnifiedDependencyPanel(
     private fun performSearch(query: String) {
         listPanel.setLoading(true)
 
-        val selectedRepo = searchRepoSelector.selectedItem as? RepositoryConfig
-        uiLog.info("Starting search for: '$query' in ${selectedRepo?.name ?: "default repository"}", "Search")
+        // Debug: Log combo box state
+        val rawSelectedItem = searchRepoSelector.selectedItem
+        uiLog.debug("Combo box state - itemCount: ${searchRepoSelector.itemCount}, rawSelectedItem: $rawSelectedItem, type: ${rawSelectedItem?.javaClass?.simpleName ?: "null"}", "Search")
+
+        val selectedRepo = rawSelectedItem as? RepositoryConfig
+        val isAllRepos = selectedRepo?.id == ALL_REPOSITORIES_OPTION.id
+
+        uiLog.debug("Selected repo: ${selectedRepo?.name ?: "null"} (id=${selectedRepo?.id}), isAllRepos=$isAllRepos", "Search")
+
+        if (isAllRepos) {
+            uiLog.info("Starting search for: '$query' in ALL repositories (${searchableRepos.size} repos)", "Search")
+        } else if (selectedRepo != null) {
+            uiLog.info("Starting search for: '$query' in ${selectedRepo.name}", "Search")
+        } else {
+            uiLog.warn("Starting search for: '$query' but no repository selected (combo box may not be initialized)", "Search")
+        }
 
         ApplicationManager.getApplication().executeOnPooledThread {
             try {
-                val packages = searchInRepository(query, selectedRepo)
+                val packages = when {
+                    isAllRepos -> {
+                        // Search all repositories and combine results
+                        searchAllRepositories(query)
+                    }
+                    selectedRepo != null -> {
+                        searchInRepository(query, selectedRepo)
+                    }
+                    else -> {
+                        // Fallback: If no repo selected but we have searchable repos, search all
+                        if (searchableRepos.isNotEmpty()) {
+                            uiLog.warn("No repo selected, falling back to searching all ${searchableRepos.size} repos", "Search")
+                            searchAllRepositories(query)
+                        } else {
+                            // Last resort: search Maven Central directly
+                            uiLog.warn("No repositories configured, falling back to Maven Central only", "Search")
+                            DependencyService.searchFromMavenCentral(query)
+                                .map { PackageAdapters.fromDependency(it, PackageSource.MAVEN_CENTRAL) }
+                        }
+                    }
+                }
 
                 // Merge with installed status from both Gradle and Maven
                 val gradleInstalled = if (isGradleProject) gradleDependencyService.installedDependencies else emptyList()
@@ -462,6 +538,54 @@ class UnifiedDependencyPanel(
     }
 
     /**
+     * Search all configured repositories and combine results.
+     * Tracks which repositories each package is available in.
+     */
+    private fun searchAllRepositories(query: String): List<UnifiedPackage> {
+        // Map of package ID to list of (package, repo) pairs
+        val packagesByRepo = mutableMapOf<String, MutableList<Pair<UnifiedPackage, RepositoryConfig>>>()
+        val searchedRepos = mutableListOf<String>()
+
+        for (repo in searchableRepos) {
+            try {
+                uiLog.info("Searching ${repo.name}...", "Search")
+                val results = searchInRepository(query, repo)
+                if (results.isNotEmpty()) {
+                    for (pkg in results) {
+                        packagesByRepo.getOrPut(pkg.id) { mutableListOf() }.add(Pair(pkg, repo))
+                    }
+                    searchedRepos.add("${repo.name}: ${results.size}")
+                    uiLog.info("Found ${results.size} packages in ${repo.name}", "Search")
+                }
+            } catch (e: Exception) {
+                uiLog.warn("Failed to search ${repo.name}: ${e.message}", "Search")
+            }
+        }
+
+        uiLog.info("All repositories search complete: ${searchedRepos.joinToString(", ")}", "Search")
+
+        // Combine packages, tracking all available repositories
+        return packagesByRepo.map { (_, packagesWithRepos) ->
+            // Use the package with the most info as the base
+            val bestPackage = packagesWithRepos.maxByOrNull { (pkg, _) ->
+                (pkg.latestVersion?.length ?: 0) + (pkg.description?.length ?: 0)
+            }?.first ?: packagesWithRepos.first().first
+
+            // Build list of available repositories
+            val availableRepos = packagesWithRepos.map { (pkg, repo) ->
+                star.intellijplugin.pkgfinder.gradle.manager.model.AvailableRepository(
+                    id = repo.id,
+                    name = repo.name,
+                    url = repo.url,
+                    version = pkg.latestVersion
+                )
+            }
+
+            bestPackage.copy(availableRepositories = availableRepos)
+        }
+    }
+
+    /**
      * Search for packages in the specified repository.
      */
     private fun searchInRepository(query: String, repo: RepositoryConfig?): List<UnifiedPackage> {
@@ -488,8 +612,8 @@ class UnifiedDependencyPanel(
             }
             RepositoryType.NEXUS -> {
                 uiLog.info("Using Nexus search API", "Search")
-                val results = DependencyService.searchFromNexus(query)
-                results.map { PackageAdapters.fromDependency(it, PackageSource.NEXUS) }
+                // Use repository-specific credentials if available
+                searchNexusRepository(query, repo)
             }
             RepositoryType.AZURE_ARTIFACTS -> {
                 uiLog.info("Using Azure Artifacts REST API", "Search")
@@ -533,20 +657,146 @@ class UnifiedDependencyPanel(
             return searchAzureArtifacts(query, repo)
         }
 
+        // Build authentication credentials from repository config
+        val auth = buildAuthCredentials(repo)
+
         // For other repos, try a simple Nexus-style search if available
         val nexusSearchUrl = "$repoUrl/service/rest/v1/search?sort=version&direction=desc&q=$query"
         try {
-            val result = star.intellijplugin.pkgfinder.util.HttpRequestHelper.getForObject(nexusSearchUrl) { it }
-            if (result is star.intellijplugin.pkgfinder.util.HttpRequestHelper.RequestResult.Success && result.data != null) {
-                // Parse Nexus-style response
-                val results = DependencyService.searchFromNexus(query)
-                return results.map { PackageAdapters.fromDependency(it, PackageSource.NEXUS) }
+            uiLog.info("Trying Nexus-style search at: $nexusSearchUrl", "Search")
+            val result = star.intellijplugin.pkgfinder.util.HttpRequestHelper.getForObject(nexusSearchUrl, auth) { it }
+            when (result) {
+                is star.intellijplugin.pkgfinder.util.HttpRequestHelper.RequestResult.Success -> {
+                    if (result.data != null) {
+                        uiLog.info("Nexus search successful, parsing response...", "Search")
+                        return parseNexusSearchResponse(result.data)
+                    }
+                }
+                is star.intellijplugin.pkgfinder.util.HttpRequestHelper.RequestResult.Error -> {
+                    uiLog.warn("Nexus-style search failed: ${result.exception.message} (code: ${result.responseCode})", "Search")
+                    if (result.responseCode == 401 || result.responseCode == 403) {
+                        uiLog.error("Authentication failed. Check credentials in Maven settings.xml or gradle.properties", "Search")
+                    }
+                }
             }
         } catch (e: Exception) {
             log.debug("Nexus-style search not available at $repoUrl: ${e.message}")
         }
 
         log.info("Search not fully supported for repository: ${repo.name}. Try using Maven Central or configure a Nexus repository.")
+        uiLog.warn("Search not fully supported for repository: ${repo.name}", "Search")
+        return emptyList()
+    }
+
+    /**
+     * Build authentication credentials from a RepositoryConfig.
+     */
+    private fun buildAuthCredentials(repo: RepositoryConfig): star.intellijplugin.pkgfinder.util.HttpRequestHelper.AuthCredentials? {
+        return when {
+            repo.username != null && repo.password != null -> {
+                star.intellijplugin.pkgfinder.util.HttpRequestHelper.AuthCredentials(
+                    username = repo.username,
+                    password = repo.password
+                )
+            }
+            repo.password != null -> {
+                // PAT-style authentication (empty username with token as password)
+                star.intellijplugin.pkgfinder.util.HttpRequestHelper.AuthCredentials(
+                    username = "",
+                    password = repo.password
+                )
+            }
+            else -> null
+        }
+    }
+
+    /**
+     * Parse a Nexus search API response.
+     */
+    private fun parseNexusSearchResponse(response: String): List<UnifiedPackage> {
+        val packages = mutableListOf<UnifiedPackage>()
+        try {
+            // Nexus response format: {"items":[{"group":"...","name":"...","version":"...",...}]}
+            val groupPattern = """"group"\s*:\s*"([^"]+)"""".toRegex()
+            val namePattern = """"name"\s*:\s*"([^"]+)"""".toRegex()
+            val versionPattern = """"version"\s*:\s*"([^"]+)"""".toRegex()
+
+            // Split by items to find individual packages
+            val itemsStart = response.indexOf("\"items\"")
+            if (itemsStart == -1) return emptyList()
+
+            // Simple extraction of group:name:version tuples
+            val itemPattern = """\{[^}]*"group"\s*:\s*"([^"]+)"[^}]*"name"\s*:\s*"([^"]+)"[^}]*"version"\s*:\s*"([^"]+)"[^}]*\}""".toRegex()
+            val matches = itemPattern.findAll(response)
+
+            for (match in matches.take(50)) {
+                val groupId = match.groupValues[1]
+                val artifactId = match.groupValues[2]
+                val version = match.groupValues[3]
+
+                packages.add(
+                    UnifiedPackage(
+                        name = artifactId,
+                        publisher = groupId,
+                        installedVersion = null,
+                        latestVersion = version,
+                        description = null,
+                        homepage = null,
+                        license = null,
+                        scope = null,
+                        modules = emptyList(),
+                        source = PackageSource.NEXUS,
+                        metadata = star.intellijplugin.pkgfinder.gradle.manager.model.PackageMetadata.MavenMetadata(
+                            packaging = "jar",
+                            timestamp = null,
+                            extensions = emptyList()
+                        )
+                    )
+                )
+            }
+        } catch (e: Exception) {
+            log.warn("Failed to parse Nexus response: ${e.message}")
+        }
+        return packages.distinctBy { it.id }
+    }
+
+    /**
+     * Search a Nexus repository using the repository's own credentials.
+     */
+    private fun searchNexusRepository(query: String, repo: RepositoryConfig): List<UnifiedPackage> {
+        val repoUrl = repo.url.trimEnd('/')
+        val auth = buildAuthCredentials(repo)
+
+        val searchUrl = "$repoUrl/service/rest/v1/search?sort=version&direction=desc&q=$query"
+
+        uiLog.info("Nexus: Searching with URL: $searchUrl", "Nexus")
+        if (auth != null) {
+            uiLog.info("Nexus: Using authentication credentials", "Nexus")
+        } else {
+            uiLog.warn("Nexus: No credentials configured - request may fail with 401", "Nexus")
+        }
+
+        try {
+            val result = star.intellijplugin.pkgfinder.util.HttpRequestHelper.getForObject(searchUrl, auth) { it }
+            when (result) {
+                is star.intellijplugin.pkgfinder.util.HttpRequestHelper.RequestResult.Success -> {
+                    if (result.data != null) {
+                        uiLog.info("Nexus: Search successful, parsing response...", "Nexus")
+                        return parseNexusSearchResponse(result.data)
+                    }
+                }
+                is star.intellijplugin.pkgfinder.util.HttpRequestHelper.RequestResult.Error -> {
+                    uiLog.error("Nexus: Search failed - ${result.exception.message} (code: ${result.responseCode})", "Nexus")
+                    if (result.responseCode == 401 || result.responseCode == 403) {
+                        uiLog.error("Nexus: Authentication failed. Check credentials in Maven settings.xml or gradle.properties", "Nexus")
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            log.warn("Nexus search failed: ${e.message}")
+            uiLog.error("Nexus: Exception - ${e.message}", "Nexus")
+        }
+
         return emptyList()
     }
 
@@ -556,16 +806,38 @@ class UnifiedDependencyPanel(
     private fun searchArtifactoryRepo(query: String, repo: RepositoryConfig): List<UnifiedPackage> {
         val repoUrl = repo.url.trimEnd('/')
 
+        // Build authentication credentials from repository config
+        val auth = buildAuthCredentials(repo)
+
         // Try Artifactory GAVC search API
         val searchUrl = "$repoUrl/api/search/gavc?g=*&a=*$query*&repos=${repo.id}"
 
+        uiLog.info("Artifactory: Searching with URL: $searchUrl", "Artifactory")
+        if (auth != null) {
+            uiLog.info("Artifactory: Using authentication credentials", "Artifactory")
+        } else {
+            uiLog.warn("Artifactory: No credentials configured - request may fail with 401", "Artifactory")
+        }
+
         try {
-            val result = star.intellijplugin.pkgfinder.util.HttpRequestHelper.getForObject(searchUrl) { it }
-            if (result is star.intellijplugin.pkgfinder.util.HttpRequestHelper.RequestResult.Success && result.data != null) {
-                return parseArtifactoryResponse(result.data, repo)
+            val result = star.intellijplugin.pkgfinder.util.HttpRequestHelper.getForObject(searchUrl, auth) { it }
+            when (result) {
+                is star.intellijplugin.pkgfinder.util.HttpRequestHelper.RequestResult.Success -> {
+                    if (result.data != null) {
+                        uiLog.info("Artifactory: Search successful, parsing response...", "Artifactory")
+                        return parseArtifactoryResponse(result.data, repo)
+                    }
+                }
+                is star.intellijplugin.pkgfinder.util.HttpRequestHelper.RequestResult.Error -> {
+                    uiLog.error("Artifactory: Search failed - ${result.exception.message} (code: ${result.responseCode})", "Artifactory")
+                    if (result.responseCode == 401 || result.responseCode == 403) {
+                        uiLog.error("Artifactory: Authentication failed. Check credentials in Maven settings.xml or gradle.properties", "Artifactory")
+                    }
+                }
             }
         } catch (e: Exception) {
             log.debug("Artifactory search failed: ${e.message}")
+            uiLog.error("Artifactory: Exception - ${e.message}", "Artifactory")
         }
 
         return emptyList()
@@ -667,43 +939,69 @@ class UnifiedDependencyPanel(
                 }
             }
 
+            // Azure DevOps REST API uses feeds.dev.azure.com, NOT pkgs.dev.azure.com
+            // pkgs.dev.azure.com is for Maven/NuGet package downloads
+            // feeds.dev.azure.com is for the Packaging REST API
             val apiBase = if (project != null) {
-                "https://pkgs.dev.azure.com/$org/$project/_apis/packaging/feeds/$feed"
+                "https://feeds.dev.azure.com/$org/$project/_apis/packaging/feeds/$feed"
             } else {
-                "https://pkgs.dev.azure.com/$org/_apis/packaging/feeds/$feed"
+                "https://feeds.dev.azure.com/$org/_apis/packaging/feeds/$feed"
             }
+            uiLog.info("Azure Artifacts: Using API base: $apiBase", "Azure")
 
-            // Build the search URL - use empty query to list all packages if no query provided
+            // Build the search URL with proper query parameters
+            // includeDescription=true is required to get package descriptions
+            // See: https://learn.microsoft.com/en-us/rest/api/azure/devops/artifacts/artifact-details/get-packages
+            val baseParams = "api-version=7.1&protocolType=maven&includeDescription=true"
             val searchUrl = if (query.isNotBlank()) {
-                "$apiBase/packages?api-version=7.0&packageNameQuery=$query&protocolType=maven"
+                "$apiBase/packages?$baseParams&packageNameQuery=$query"
             } else {
-                "$apiBase/packages?api-version=7.0&protocolType=maven"
+                "$apiBase/packages?$baseParams"
             }
 
             log.info("Azure Artifacts API URL: $searchUrl")
             uiLog.info("Azure Artifacts: API URL: $searchUrl", "Azure")
 
-            // Build authentication credentials
+            // Build authentication credentials - log what we have
+            uiLog.info("Azure Artifacts: Repository config - id='${repo.id}', source=${repo.source}", "Azure")
+            uiLog.info("Azure Artifacts: Credentials check - username=${repo.username?.let { "'$it'" } ?: "null"}, password=${repo.password?.let { "present (${it.length} chars)" } ?: "null"}", "Azure")
+
             val auth = if (repo.username != null && repo.password != null) {
-                uiLog.info("Azure Artifacts: Using username/password authentication", "Azure")
+                val maskedPw = if (repo.password.length > 4) {
+                    "${repo.password.take(2)}${"*".repeat(minOf(repo.password.length - 4, 20))}${repo.password.takeLast(2)}"
+                } else "****"
+                uiLog.info("Azure Artifacts: Using Basic auth - username='${repo.username}', password=$maskedPw", "Azure")
                 star.intellijplugin.pkgfinder.util.HttpRequestHelper.AuthCredentials(
                     username = repo.username,
                     password = repo.password
                 )
             } else if (repo.password != null) {
                 // For Azure Artifacts, try using a PAT with empty username (Azure DevOps convention)
-                uiLog.info("Azure Artifacts: Using PAT authentication (password only)", "Azure")
+                val maskedPw = if (repo.password.length > 4) {
+                    "${repo.password.take(2)}${"*".repeat(minOf(repo.password.length - 4, 20))}${repo.password.takeLast(2)}"
+                } else "****"
+                uiLog.info("Azure Artifacts: Using PAT auth (empty username) - password=$maskedPw", "Azure")
                 star.intellijplugin.pkgfinder.util.HttpRequestHelper.AuthCredentials(
                     username = "",
                     password = repo.password
                 )
             } else {
-                uiLog.warn("Azure Artifacts: No credentials configured - request may fail with 401", "Azure")
+                uiLog.error("Azure Artifacts: NO CREDENTIALS FOUND! Check that:", "Azure")
+                uiLog.error("  1. Server ID in settings.xml matches repository ID in pom.xml: '${repo.id}'", "Azure")
+                uiLog.error("  2. Password is not Maven-encrypted (starts with '{' and ends with '}')", "Azure")
+                uiLog.error("  3. settings.xml is at ~/.m2/settings.xml", "Azure")
                 null
             }
 
             uiLog.info("Azure Artifacts: Making HTTP request...", "Azure")
-            val result = star.intellijplugin.pkgfinder.util.HttpRequestHelper.getForObject(searchUrl, auth) { it }
+
+            // Azure DevOps REST API requires Accept header
+            val headers = mapOf(
+                "Accept" to "application/json",
+                "Content-Type" to "application/json"
+            )
+
+            val result = star.intellijplugin.pkgfinder.util.HttpRequestHelper.getForObject(searchUrl, auth, headers) { it }
 
             when (result) {
                 is star.intellijplugin.pkgfinder.util.HttpRequestHelper.RequestResult.Success -> {
@@ -741,95 +1039,94 @@ class UnifiedDependencyPanel(
         val packages = mutableListOf<UnifiedPackage>()
         try {
             // Azure Artifacts response format:
-            // {"count":N,"value":[{"id":"...","name":"groupId:artifactId","versions":[{"version":"...","publishDate":"..."}],...}]}
+            // {"count":N,"value":[{"id":"...","name":"groupId:artifactId","description":"...","versions":[{"version":"..."}],...}]}
             log.debug("Parsing Azure Artifacts response: ${response.take(500)}...")
 
-            // Use a more robust JSON parsing approach
-            // Extract package objects from the "value" array
             val valueArrayStart = response.indexOf("\"value\"")
             if (valueArrayStart == -1) {
                 log.warn("Azure Artifacts response missing 'value' array")
+                uiLog.warn("Azure: Response missing 'value' array", "Azure")
                 return emptyList()
             }
 
-            // Find all "name" fields that contain colons (groupId:artifactId format)
-            val packagePattern = """\{\s*"[^"]*"[^}]*"name"\s*:\s*"([^"]+)"[^}]*"versions"\s*:\s*\[([^\]]*)\]""".toRegex()
-            val matches = packagePattern.findAll(response)
+            // Find package names in format "name":"groupId:artifactId"
+            val namePattern = """"name"\s*:\s*"([^":]+):([^"]+)"""".toRegex()
+            val nameMatches = namePattern.findAll(response).toList()
 
-            for (match in matches) {
-                val fullName = match.groupValues[1]
-                val versionsJson = match.groupValues[2]
+            uiLog.info("Azure: Found ${nameMatches.size} package name matches", "Azure")
 
-                // Parse name (format: groupId:artifactId)
-                if (fullName.contains(":")) {
-                    val parts = fullName.split(":")
-                    if (parts.size >= 2) {
-                        val groupId = parts[0]
-                        val artifactId = parts[1]
+            for (nameMatch in nameMatches) {
+                val groupId = nameMatch.groupValues[1]
+                val artifactId = nameMatch.groupValues[2]
 
-                        // Extract the latest version from versions array
-                        val versionMatch = """"version"\s*:\s*"([^"]+)"""".toRegex().find(versionsJson)
-                        val version = versionMatch?.groupValues?.get(1)
-
-                        packages.add(
-                            UnifiedPackage(
-                                name = artifactId,
-                                publisher = groupId,
-                                installedVersion = null,
-                                latestVersion = version,
-                                description = null,
-                                homepage = null,
-                                license = null,
-                                scope = null,
-                                modules = emptyList(),
-                                source = PackageSource.NEXUS, // Using NEXUS as closest match
-                                metadata = star.intellijplugin.pkgfinder.gradle.manager.model.PackageMetadata.MavenMetadata(
-                                    packaging = "jar",
-                                    timestamp = null,
-                                    extensions = emptyList()
-                                )
-                            )
-                        )
-
-                        log.debug("Found Azure Artifacts package: $groupId:$artifactId:$version")
+                // Find the context around this match to extract version and description
+                val matchStart = nameMatch.range.first
+                // Look backwards and forwards to find the containing object
+                var objStart = matchStart
+                var braceCount = 0
+                for (i in matchStart downTo 0) {
+                    if (response[i] == '}') braceCount++
+                    if (response[i] == '{') {
+                        if (braceCount == 0) {
+                            objStart = i
+                            break
+                        }
+                        braceCount--
                     }
                 }
-            }
 
-            // If the pattern didn't match, try a simpler approach
-            if (packages.isEmpty()) {
-                log.info("Trying simpler parsing for Azure Artifacts response")
+                var objEnd = matchStart
+                braceCount = 0
+                for (i in matchStart until response.length) {
+                    if (response[i] == '{') braceCount++
+                    if (response[i] == '}') {
+                        if (braceCount == 0) {
+                            objEnd = i + 1
+                            break
+                        }
+                        braceCount--
+                    }
+                }
 
-                // Look for name patterns directly
-                val namePattern = """"name"\s*:\s*"([^":]+):([^"]+)"""".toRegex()
-                val nameMatches = namePattern.findAll(response)
+                val objectJson = response.substring(objStart, minOf(objEnd, response.length))
 
-                for (nameMatch in nameMatches) {
-                    val groupId = nameMatch.groupValues[1]
-                    val artifactId = nameMatch.groupValues[2]
+                // Extract version and description from versions array
+                // Note: In Azure DevOps API, description is "packageDescription" INSIDE the version object
+                val versionsMatch = """"versions"\s*:\s*\[([^\]]*)\]""".toRegex().find(objectJson)
+                val versionsJson = versionsMatch?.groupValues?.get(1) ?: ""
 
-                    packages.add(
-                        UnifiedPackage(
-                            name = artifactId,
-                            publisher = groupId,
-                            installedVersion = null,
-                            latestVersion = null,
-                            description = null,
-                            homepage = null,
-                            license = null,
-                            scope = null,
-                            modules = emptyList(),
-                            source = PackageSource.NEXUS,
-                            metadata = star.intellijplugin.pkgfinder.gradle.manager.model.PackageMetadata.MavenMetadata(
-                                packaging = "jar",
-                                timestamp = null,
-                                extensions = emptyList()
-                            )
+                // Get version number
+                val versionMatch = """"version"\s*:\s*"([^"]+)"""".toRegex().find(versionsJson)
+                val version = versionMatch?.groupValues?.get(1)
+
+                // Get packageDescription from the version object (not at package level!)
+                val descMatch = """"packageDescription"\s*:\s*"([^"]*)"""".toRegex().find(versionsJson)
+                val description = descMatch?.groupValues?.get(1)?.takeIf { it.isNotBlank() }
+
+                packages.add(
+                    UnifiedPackage(
+                        name = artifactId,
+                        publisher = groupId,
+                        installedVersion = null,
+                        latestVersion = version,
+                        description = description,
+                        homepage = null,
+                        license = null,
+                        scope = null,
+                        modules = emptyList(),
+                        source = PackageSource.NEXUS,
+                        metadata = star.intellijplugin.pkgfinder.gradle.manager.model.PackageMetadata.MavenMetadata(
+                            packaging = "jar",
+                            timestamp = null,
+                            extensions = emptyList()
                         )
                     )
-                }
+                )
+
+                log.debug("Found Azure Artifacts package: $groupId:$artifactId:$version")
             }
 
+            uiLog.info("Azure: Parsed ${packages.size} packages from response", "Azure")
             log.info("Parsed ${packages.size} packages from Azure Artifacts response")
         } catch (e: Exception) {
             log.warn("Failed to parse Azure Artifacts response: ${e.message}", e)
@@ -837,7 +1134,14 @@ class UnifiedDependencyPanel(
         return packages.distinctBy { it.id }
     }
 
-    private fun performInstall(pkg: UnifiedPackage, version: String, module: String, configuration: String) {
+    private fun performInstall(pkg: UnifiedPackage, version: String, module: String, configuration: String, sourceRepoUrl: String? = null) {
+        // Log which repository is being used
+        if (sourceRepoUrl != null) {
+            uiLog.info("Installing ${pkg.id}:$version from repository: $sourceRepoUrl", "Install")
+        } else {
+            uiLog.info("Installing ${pkg.id}:$version", "Install")
+        }
+
         // Determine if this should be installed via Gradle or Maven based on project type
         if (isGradleProject) {
             performGradleInstall(pkg, version, module, configuration)
@@ -984,20 +1288,200 @@ class UnifiedDependencyPanel(
     private fun fetchAvailableVersions(pkg: UnifiedPackage, callback: (List<String>) -> Unit) {
         ApplicationManager.getApplication().executeOnPooledThread {
             try {
-                // Search for all versions of this package
-                val query = "${pkg.publisher}:${pkg.name}"
-                val results = DependencyService.searchFromMavenCentral(query)
-                val versions = results.map { it.version }.distinct().sortedDescending()
+                val versions = when {
+                    // If package has available repositories, use the first one
+                    pkg.availableRepositories.isNotEmpty() -> {
+                        val repo = pkg.availableRepositories.first()
+                        val repoConfig = searchableRepos.find { it.url == repo.url || it.id == repo.id }
+                        if (repoConfig != null) {
+                            fetchVersionsFromRepository(pkg, repoConfig)
+                        } else {
+                            fetchVersionsFromMavenCentral(pkg)
+                        }
+                    }
+                    // Check source type
+                    pkg.source == PackageSource.NEXUS -> {
+                        // Try to find matching Nexus/Azure repo
+                        val azureRepo = searchableRepos.find { it.type == RepositoryType.AZURE_ARTIFACTS }
+                        if (azureRepo != null) {
+                            fetchVersionsFromAzure(pkg, azureRepo)
+                        } else {
+                            fetchVersionsFromMavenCentral(pkg)
+                        }
+                    }
+                    else -> fetchVersionsFromMavenCentral(pkg)
+                }
 
                 ApplicationManager.getApplication().invokeLater {
                     callback(versions.ifEmpty { listOfNotNull(pkg.latestVersion) })
                 }
             } catch (e: Exception) {
                 log.error("Failed to fetch versions", e)
+                uiLog.error("Failed to fetch versions: ${e.message}", "Versions")
                 ApplicationManager.getApplication().invokeLater {
                     callback(listOfNotNull(pkg.latestVersion))
                 }
             }
+        }
+    }
+
+    /**
+     * Fetch versions based on repository type.
+     */
+    private fun fetchVersionsFromRepository(pkg: UnifiedPackage, repo: RepositoryConfig): List<String> {
+        return when (repo.type) {
+            RepositoryType.MAVEN_CENTRAL -> fetchVersionsFromMavenCentral(pkg)
+            RepositoryType.AZURE_ARTIFACTS -> fetchVersionsFromAzure(pkg, repo)
+            RepositoryType.NEXUS -> fetchVersionsFromNexus(pkg, repo)
+            else -> fetchVersionsFromMavenCentral(pkg)
+        }
+    }
+
+    /**
+     * Fetch versions from Maven Central.
+     */
+    private fun fetchVersionsFromMavenCentral(pkg: UnifiedPackage): List<String> {
+        uiLog.info("Fetching versions from Maven Central for ${pkg.id}", "Versions")
+        val query = "${pkg.publisher}:${pkg.name}"
+        val results = DependencyService.searchFromMavenCentral(query)
+        return results.map { it.version }.distinct().sortedWith(VersionComparator.reversed())
+    }
+
+    /**
+     * Fetch versions from Azure Artifacts using Get Package Versions API.
+     * https://learn.microsoft.com/en-us/rest/api/azure/devops/artifacts/artifact-details/get-package-versions
+     */
+    private fun fetchVersionsFromAzure(pkg: UnifiedPackage, repo: RepositoryConfig): List<String> {
+        val repoUrl = repo.url.trimEnd('/')
+        uiLog.info("Fetching versions from Azure Artifacts for ${pkg.id}", "Versions")
+
+        try {
+            // Parse Azure URL to get org/project/feed
+            var regex = """pkgs\.dev\.azure\.com/([^/]+)/([^/]+)/_packaging/([^/]+)""".toRegex()
+            var match = regex.find(repoUrl)
+
+            val org: String
+            val project: String?
+            val feed: String
+
+            if (match != null) {
+                org = match.groupValues[1]
+                project = match.groupValues[2]
+                feed = match.groupValues[3]
+            } else {
+                regex = """pkgs\.dev\.azure\.com/([^/]+)/_packaging/([^/]+)""".toRegex()
+                match = regex.find(repoUrl)
+                if (match != null) {
+                    org = match.groupValues[1]
+                    project = null
+                    feed = match.groupValues[2]
+                } else {
+                    return fetchVersionsFromMavenCentral(pkg)
+                }
+            }
+
+            // Package name in Azure format: groupId:artifactId
+            val packageName = "${pkg.publisher}:${pkg.name}"
+            val encodedName = java.net.URLEncoder.encode(packageName, "UTF-8")
+
+            val apiBase = if (project != null) {
+                "https://feeds.dev.azure.com/$org/$project/_apis/packaging/feeds/$feed"
+            } else {
+                "https://feeds.dev.azure.com/$org/_apis/packaging/feeds/$feed"
+            }
+
+            val versionsUrl = "$apiBase/packages/$encodedName/versions?api-version=7.1"
+            uiLog.info("Azure Versions API URL: $versionsUrl", "Versions")
+
+            val auth = buildAuthCredentials(repo)
+            val headers = mapOf("Accept" to "application/json")
+
+            val result = star.intellijplugin.pkgfinder.util.HttpRequestHelper.getForObject(versionsUrl, auth, headers) { it }
+
+            when (result) {
+                is star.intellijplugin.pkgfinder.util.HttpRequestHelper.RequestResult.Success -> {
+                    if (result.data != null) {
+                        return parseAzureVersionsResponse(result.data)
+                    }
+                }
+                is star.intellijplugin.pkgfinder.util.HttpRequestHelper.RequestResult.Error -> {
+                    uiLog.warn("Azure versions fetch failed: ${result.exception.message}", "Versions")
+                }
+            }
+        } catch (e: Exception) {
+            uiLog.error("Failed to fetch Azure versions: ${e.message}", "Versions")
+        }
+
+        return listOfNotNull(pkg.latestVersion)
+    }
+
+    /**
+     * Parse Azure Get Package Versions response.
+     */
+    private fun parseAzureVersionsResponse(response: String): List<String> {
+        val versions = mutableListOf<String>()
+        // Response format: {"count":N,"value":[{"version":"1.0.0","isDeleted":false,"isListed":true,...}]}
+        val versionPattern = """"version"\s*:\s*"([^"]+)"""".toRegex()
+        val matches = versionPattern.findAll(response)
+
+        for (match in matches) {
+            versions.add(match.groupValues[1])
+        }
+
+        uiLog.info("Azure: Found ${versions.size} versions", "Versions")
+        return versions.sortedWith(VersionComparator.reversed())
+    }
+
+    /**
+     * Fetch versions from Nexus repository.
+     */
+    private fun fetchVersionsFromNexus(pkg: UnifiedPackage, repo: RepositoryConfig): List<String> {
+        val repoUrl = repo.url.trimEnd('/')
+        uiLog.info("Fetching versions from Nexus for ${pkg.id}", "Versions")
+
+        try {
+            val searchUrl = "$repoUrl/service/rest/v1/search?sort=version&direction=desc&group=${pkg.publisher}&name=${pkg.name}"
+            val auth = buildAuthCredentials(repo)
+
+            val result = star.intellijplugin.pkgfinder.util.HttpRequestHelper.getForObject(searchUrl, auth) { it }
+
+            when (result) {
+                is star.intellijplugin.pkgfinder.util.HttpRequestHelper.RequestResult.Success -> {
+                    if (result.data != null) {
+                        val versionPattern = """"version"\s*:\s*"([^"]+)"""".toRegex()
+                        val versions = versionPattern.findAll(result.data)
+                            .map { it.groupValues[1] }
+                            .distinct()
+                            .toList()
+                        uiLog.info("Nexus: Found ${versions.size} versions", "Versions")
+                        return versions.sortedWith(VersionComparator.reversed())
+                    }
+                }
+                is star.intellijplugin.pkgfinder.util.HttpRequestHelper.RequestResult.Error -> {
+                    uiLog.warn("Nexus versions fetch failed: ${result.exception.message}", "Versions")
+                }
+            }
+        } catch (e: Exception) {
+            uiLog.error("Failed to fetch Nexus versions: ${e.message}", "Versions")
+        }
+
+        return fetchVersionsFromMavenCentral(pkg)
+    }
+
+    /**
+     * Comparator for semantic versions.
+     */
+    private object VersionComparator : Comparator<String> {
+        override fun compare(v1: String, v2: String): Int {
+            val parts1 = v1.split("[.\\-_]".toRegex()).mapNotNull { it.takeWhile { c -> c.isDigit() }.toIntOrNull() }
+            val parts2 = v2.split("[.\\-_]".toRegex()).mapNotNull { it.takeWhile { c -> c.isDigit() }.toIntOrNull() }
+
+            for (i in 0 until maxOf(parts1.size, parts2.size)) {
+                val p1 = parts1.getOrElse(i) { 0 }
+                val p2 = parts2.getOrElse(i) { 0 }
+                if (p1 != p2) return p1.compareTo(p2)
+            }
+            return v1.compareTo(v2)
         }
     }
 

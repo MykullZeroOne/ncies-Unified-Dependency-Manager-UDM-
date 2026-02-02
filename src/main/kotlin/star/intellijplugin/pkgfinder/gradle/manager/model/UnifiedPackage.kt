@@ -11,6 +11,16 @@ import star.intellijplugin.pkgfinder.npm.NpmObject
  * Unified package model that abstracts dependencies from different sources
  * (Gradle, Maven Central, NPM, Nexus, etc.) into a single representation.
  */
+/**
+ * Represents a repository where a package is available.
+ */
+data class AvailableRepository(
+    val id: String,
+    val name: String,
+    val url: String,
+    val version: String?
+)
+
 data class UnifiedPackage(
     val name: String,               // artifactId or package name
     val publisher: String,          // groupId or publisher
@@ -23,12 +33,14 @@ data class UnifiedPackage(
     val modules: List<String>,      // which modules use this dependency
     val source: PackageSource,
     val metadata: PackageMetadata,
-    val isTransitive: Boolean = false  // true if this is a transitive (indirect) dependency
+    val isTransitive: Boolean = false,  // true if this is a transitive (indirect) dependency
+    val availableRepositories: List<AvailableRepository> = emptyList()  // repos where this package is available
 ) {
     val id: String get() = "$publisher:$name"
     val displayName: String get() = name
     val hasUpdate: Boolean get() = installedVersion != null && latestVersion != null && installedVersion != latestVersion
     val isInstalled: Boolean get() = installedVersion != null
+    val hasMultipleRepositories: Boolean get() = availableRepositories.size > 1
 }
 
 /**

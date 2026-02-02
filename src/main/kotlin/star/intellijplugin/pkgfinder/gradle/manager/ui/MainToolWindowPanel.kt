@@ -5,15 +5,23 @@ import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.*
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.ui.SimpleToolWindowPanel
 import com.intellij.openapi.util.Disposer
+import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.ui.JBColor
+import com.intellij.ui.ToolbarDecorator
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.components.JBTabbedPane
 import com.intellij.util.ui.JBUI
 import star.intellijplugin.pkgfinder.PackageFinderBundle.message
 import star.intellijplugin.pkgfinder.gradle.manager.service.PluginLogService
+import star.intellijplugin.pkgfinder.gradle.manager.service.RepositoryConfig
+import star.intellijplugin.pkgfinder.gradle.manager.service.RepositoryConfigWriter
+import star.intellijplugin.pkgfinder.gradle.manager.service.RepositoryDiscoveryService
+import star.intellijplugin.pkgfinder.gradle.manager.service.RepositorySource
+import star.intellijplugin.pkgfinder.gradle.manager.service.RepositoryType
 import java.awt.*
 import javax.swing.*
 
@@ -201,14 +209,206 @@ class MainToolWindowPanel(
     }
 
     private fun createRepositoriesPanel(): JPanel {
-        return JPanel(BorderLayout()).apply {
-            val label = JBLabel(message("unified.tab.repositories.coming")).apply {
-                horizontalAlignment = SwingConstants.CENTER
-                foreground = JBColor.GRAY
+        val discoveryService = RepositoryDiscoveryService.getInstance(project)
+        val configWriter = RepositoryConfigWriter.getInstance(project)
+
+        val repositoryListModel = DefaultListModel<RepositoryConfig>()
+        val repositoryList = JList(repositoryListModel).apply {
+            cellRenderer = RepositoryListCellRenderer()
+            selectionMode = ListSelectionModel.SINGLE_SELECTION
+        }
+
+        // Load repositories
+        fun loadRepositories() {
+            repositoryListModel.clear()
+            discoveryService.getConfiguredRepositories().forEach { repositoryListModel.addElement(it) }
+        }
+
+        // Test connection
+        fun testConnection() {
+            val selected = repositoryList.selectedValue ?: return
+            try {
+                val url = java.net.URL(selected.url.trimEnd('/') + "/")
+                val connection = url.openConnection() as java.net.HttpURLConnection
+                connection.requestMethod = "HEAD"
+                connection.connectTimeout = 5000
+                connection.readTimeout = 5000
+
+                if (selected.username != null || selected.password != null) {
+                    val credentials = "${selected.username ?: ""}:${selected.password ?: ""}"
+                    val encoded = java.util.Base64.getEncoder().encodeToString(credentials.toByteArray())
+                    connection.setRequestProperty("Authorization", "Basic $encoded")
+                }
+
+                val responseCode = connection.responseCode
+                connection.disconnect()
+
+                if (responseCode in 200..399) {
+                    val authInfo = if (selected.username != null || selected.password != null) " (authenticated)" else ""
+                    Messages.showInfoMessage(project, "Successfully connected to ${selected.name}$authInfo", "Test Connection")
+                } else {
+                    Messages.showWarningDialog(project, "Connection failed with HTTP status: $responseCode", "Test Connection")
+                }
+            } catch (e: Exception) {
+                Messages.showErrorDialog(project, "Connection error: ${e.localizedMessage}", "Test Connection")
             }
-            add(label, BorderLayout.CENTER)
+        }
+
+        // Create toolbar decorator
+        val decorator = ToolbarDecorator.createDecorator(repositoryList)
+            .setAddAction {
+                val dialog = AddEditRepositoryDialog(project, null)
+                if (dialog.showAndGet()) {
+                    val repo = dialog.getRepository()
+                    if (repo != null) {
+                        saveRepository(repo, dialog.saveTarget, configWriter, loadRepositories = { loadRepositories() })
+                    }
+                }
+            }
+            .setRemoveAction {
+                val selected = repositoryList.selectedValue ?: return@setRemoveAction
+                if (selected.source == RepositorySource.BUILTIN) {
+                    Messages.showWarningDialog(project, "Built-in repositories cannot be removed.", "Remove Repository")
+                    return@setRemoveAction
+                }
+                val result = Messages.showYesNoDialog(
+                    project,
+                    "Are you sure you want to remove \"${selected.name}\"?",
+                    "Remove Repository",
+                    Messages.getQuestionIcon()
+                )
+                if (result == Messages.YES) {
+                    // For now, show manual removal instructions
+                    Messages.showInfoMessage(
+                        project,
+                        "Please manually remove this repository from your build configuration:\n\n" +
+                            "• Gradle: Remove from settings.gradle or build.gradle\n" +
+                            "• Maven: Remove from ~/.m2/settings.xml or pom.xml\n\n" +
+                            "Source: ${selected.source.name.lowercase().replace("_", " ")}",
+                        "Remove Repository"
+                    )
+                    loadRepositories()
+                }
+            }
+            .setEditAction {
+                val selected = repositoryList.selectedValue ?: return@setEditAction
+                if (selected.source == RepositorySource.BUILTIN) {
+                    Messages.showWarningDialog(project, "Built-in repositories cannot be edited.", "Edit Repository")
+                    return@setEditAction
+                }
+                val dialog = AddEditRepositoryDialog(project, selected)
+                if (dialog.showAndGet()) {
+                    val repo = dialog.getRepository()
+                    if (repo != null) {
+                        saveRepository(repo, dialog.saveTarget, configWriter, loadRepositories = { loadRepositories() })
+                    }
+                }
+            }
+            .addExtraAction(object : AnAction("Test Connection", "Test connection to selected repository", AllIcons.Actions.Lightning) {
+                override fun actionPerformed(e: AnActionEvent) = testConnection()
+                override fun getActionUpdateThread() = ActionUpdateThread.EDT
+            })
+            .addExtraAction(object : AnAction("Refresh", "Refresh repository list", AllIcons.Actions.Refresh) {
+                override fun actionPerformed(e: AnActionEvent) = loadRepositories()
+                override fun getActionUpdateThread() = ActionUpdateThread.EDT
+            })
+
+        // Initial load
+        loadRepositories()
+
+        return JPanel(BorderLayout()).apply {
+            border = JBUI.Borders.empty(8)
+
+            // Info panel at top
+            val infoPanel = JPanel(BorderLayout()).apply {
+                border = JBUI.Borders.emptyBottom(8)
+                add(JBLabel("<html><b>Configured Repositories</b><br>" +
+                    "<font color='gray'>Repositories are discovered from your build configuration. " +
+                    "Add new repositories to make them available for dependency search.</font></html>"), BorderLayout.CENTER)
+            }
+
+            add(infoPanel, BorderLayout.NORTH)
+            add(decorator.createPanel(), BorderLayout.CENTER)
+
+            // Legend panel at bottom
+            val legendPanel = JPanel(FlowLayout(FlowLayout.LEFT, 16, 4)).apply {
+                border = JBUI.Borders.emptyTop(8)
+                add(JBLabel("<html><font color='gray'>Sources:</font></html>"))
+                add(JBLabel("<html><font color='#666666'>builtin</font> = Default repos</html>"))
+                add(JBLabel("<html><font color='#666666'>gradle settings/build</font> = From Gradle files</html>"))
+                add(JBLabel("<html><font color='#666666'>maven settings</font> = From ~/.m2/settings.xml or pom.xml</html>"))
+            }
+            add(legendPanel, BorderLayout.SOUTH)
         }
     }
+
+    private fun saveRepository(repo: RepositoryConfig, target: SaveTarget, configWriter: RepositoryConfigWriter, loadRepositories: () -> Unit) {
+        when (target) {
+            SaveTarget.GRADLE -> {
+                val targetFile = configWriter.getRecommendedGradleTarget()
+                if (targetFile != null) {
+                    val result = configWriter.getGradleRepositoryAddition(repo, targetFile)
+                    if (result != null) {
+                        val (original, modified) = result
+                        val previewDialog = PreviewDiffDialog(project, targetFile.path, original, modified, "Preview Repository Addition")
+                        if (previewDialog.showAndGet()) {
+                            configWriter.applyGradleChanges(targetFile, modified, "Add Repository: ${repo.name}")
+                            if (repo.username != null || repo.password != null) {
+                                Messages.showInfoMessage(project, "Repository added to ${targetFile.name}.\nCredentials saved to ~/.gradle/gradle.properties", "Add Repository")
+                            }
+                            loadRepositories()
+                        }
+                    } else {
+                        Messages.showInfoMessage(project, "This repository already exists in the configuration.", "Add Repository")
+                    }
+                }
+            }
+            SaveTarget.MAVEN_SETTINGS -> {
+                val result = configWriter.getMavenRepositoryAddition(repo)
+                if (result != null) {
+                    val (original, modified) = result
+                    val confirm = if (original.isEmpty()) {
+                        Messages.showYesNoDialog(project, "This will create a new ~/.m2/settings.xml file. Continue?", "Add Repository", Messages.getQuestionIcon())
+                    } else {
+                        Messages.showYesNoDialog(project, "This will modify your ~/.m2/settings.xml file. Continue?", "Add Repository", Messages.getQuestionIcon())
+                    }
+                    if (confirm == Messages.YES) {
+                        configWriter.applyMavenChanges(modified)
+                        loadRepositories()
+                    }
+                }
+            }
+            SaveTarget.MAVEN_POM -> {
+                val pomFile = configWriter.getRootPomFile()
+                if (pomFile != null) {
+                    val result = configWriter.getPomRepositoryAddition(repo, pomFile)
+                    if (result != null) {
+                        val (original, modified) = result
+                        val previewDialog = PreviewDiffDialog(project, pomFile.path, original, modified, "Preview Repository Addition")
+                        if (previewDialog.showAndGet()) {
+                            configWriter.applyPomChanges(pomFile, modified, "Add Repository: ${repo.name}")
+                            if (repo.username != null || repo.password != null) {
+                                val settingsResult = configWriter.getMavenRepositoryAddition(repo)
+                                if (settingsResult != null) {
+                                    configWriter.applyMavenChanges(settingsResult.second)
+                                }
+                                Messages.showInfoMessage(project, "Repository added to pom.xml.\nCredentials saved to ~/.m2/settings.xml", "Add Repository")
+                            }
+                            loadRepositories()
+                        }
+                    } else {
+                        Messages.showInfoMessage(project, "This repository already exists in the configuration.", "Add Repository")
+                    }
+                } else {
+                    Messages.showErrorDialog(project, "No pom.xml found in project root.", "Add Repository")
+                }
+            }
+            SaveTarget.PLUGIN_ONLY -> {
+                Messages.showInfoMessage(project, "Repository saved to plugin settings only. It will not affect CLI builds.", "Add Repository")
+            }
+        }
+    }
+
 
     private fun createCachesPanel(): JPanel {
         return JPanel(BorderLayout()).apply {

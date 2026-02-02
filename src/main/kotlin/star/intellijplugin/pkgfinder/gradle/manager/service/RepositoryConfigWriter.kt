@@ -52,7 +52,45 @@ class RepositoryConfigWriter(private val project: Project) {
         val newContent = addToRepositoriesBlock(text, repoDeclaration, isKotlin)
             ?: createRepositoriesBlock(text, repoDeclaration, isKotlin)
 
+        // If credentials are provided, also save to gradle.properties
+        if (repo.username != null || repo.password != null) {
+            saveGradleCredentials(repo)
+        }
+
         return Pair(text, newContent)
+    }
+
+    /**
+     * Save credentials to gradle.properties (user-level ~/.gradle/gradle.properties)
+     */
+    private fun saveGradleCredentials(repo: RepositoryConfig) {
+        val gradleDir = File(System.getProperty("user.home"), ".gradle")
+        if (!gradleDir.exists()) {
+            gradleDir.mkdirs()
+        }
+
+        val propsFile = File(gradleDir, "gradle.properties")
+        val props = java.util.Properties()
+
+        // Load existing properties
+        if (propsFile.exists()) {
+            propsFile.inputStream().use { props.load(it) }
+        }
+
+        // Add credentials
+        if (repo.username != null) {
+            props.setProperty("${repo.id}User", repo.username)
+        }
+        if (repo.password != null) {
+            props.setProperty("${repo.id}Password", repo.password)
+        }
+
+        // Save
+        propsFile.outputStream().use {
+            props.store(it, "Gradle properties - credentials managed by UDM plugin")
+        }
+
+        log.info("Saved credentials for ${repo.id} to ~/.gradle/gradle.properties")
     }
 
     /**
@@ -262,6 +300,11 @@ class RepositoryConfigWriter(private val project: Project) {
 
             val settings = doc.documentElement
 
+            // Add server credentials if provided
+            if (repo.username != null || repo.password != null) {
+                addMavenServerCredentials(doc, settings, repo)
+            }
+
             // Find or create profiles element
             var profiles = settings.getElementsByTagName("profiles").item(0) as? Element
             if (profiles == null) {
@@ -327,12 +370,78 @@ class RepositoryConfigWriter(private val project: Project) {
         }
     }
 
+    /**
+     * Add server credentials to the <servers> section of settings.xml
+     */
+    private fun addMavenServerCredentials(doc: Document, settings: Element, repo: RepositoryConfig) {
+        // Find or create servers element
+        var servers = settings.getElementsByTagName("servers").item(0) as? Element
+        if (servers == null) {
+            servers = doc.createElement("servers")
+            // Insert servers before profiles if possible
+            val profiles = settings.getElementsByTagName("profiles").item(0)
+            if (profiles != null) {
+                settings.insertBefore(servers, profiles)
+            } else {
+                settings.appendChild(servers)
+            }
+        }
+
+        // Check if server already exists
+        val existingServers = servers.getElementsByTagName("server")
+        for (i in 0 until existingServers.length) {
+            val server = existingServers.item(i) as? Element ?: continue
+            val serverId = server.getElementsByTagName("id").item(0)?.textContent
+            if (serverId == repo.id) {
+                // Update existing server
+                server.getElementsByTagName("username").item(0)?.textContent = repo.username ?: ""
+                server.getElementsByTagName("password").item(0)?.textContent = repo.password ?: ""
+                return
+            }
+        }
+
+        // Create new server entry
+        val server = doc.createElement("server")
+
+        val id = doc.createElement("id")
+        id.textContent = repo.id
+        server.appendChild(id)
+
+        if (repo.username != null) {
+            val username = doc.createElement("username")
+            username.textContent = repo.username
+            server.appendChild(username)
+        }
+
+        if (repo.password != null) {
+            val password = doc.createElement("password")
+            password.textContent = repo.password
+            server.appendChild(password)
+        }
+
+        servers.appendChild(server)
+    }
+
     private fun createMavenSettings(repo: RepositoryConfig): String {
+        val serversSection = if (repo.username != null || repo.password != null) {
+            """
+  <servers>
+    <server>
+      <id>${repo.id}</id>
+      ${if (repo.username != null) "<username>${repo.username}</username>" else ""}
+      ${if (repo.password != null) "<password>${repo.password}</password>" else ""}
+    </server>
+  </servers>
+"""
+        } else {
+            ""
+        }
+
         return """<?xml version="1.0" encoding="UTF-8"?>
 <settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
           xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
           xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0 http://maven.apache.org/xsd/settings-1.0.0.xsd">
-  <profiles>
+$serversSection  <profiles>
     <profile>
       <id>custom-repos</id>
       <repositories>
@@ -401,5 +510,106 @@ class RepositoryConfigWriter(private val project: Project) {
         }
 
         return null
+    }
+
+    /**
+     * Add a repository to project's pom.xml.
+     * Returns the modified content for preview, or null if failed.
+     *
+     * @param repo The repository to add
+     * @param pomFile The target pom.xml file
+     * @return Pair of (original content, new content) for preview, or null if failed
+     */
+    fun getPomRepositoryAddition(repo: RepositoryConfig, pomFile: VirtualFile): Pair<String, String>? {
+        val document = FileDocumentManager.getInstance().getDocument(pomFile) ?: return null
+        val text = document.text
+
+        return try {
+            val factory = DocumentBuilderFactory.newInstance()
+            val builder = factory.newDocumentBuilder()
+            val doc = builder.parse(text.byteInputStream())
+
+            val projectElement = doc.documentElement
+
+            // Find or create repositories element
+            var repositories = projectElement.getElementsByTagName("repositories").item(0) as? Element
+            if (repositories == null) {
+                repositories = doc.createElement("repositories")
+                // Insert before dependencies if possible
+                val dependencies = projectElement.getElementsByTagName("dependencies").item(0)
+                if (dependencies != null) {
+                    projectElement.insertBefore(repositories, dependencies)
+                } else {
+                    projectElement.appendChild(repositories)
+                }
+            }
+
+            // Check if repository already exists
+            val existingRepos = repositories.getElementsByTagName("repository")
+            for (i in 0 until existingRepos.length) {
+                val existing = existingRepos.item(i) as? Element ?: continue
+                val existingUrl = existing.getElementsByTagName("url").item(0)?.textContent
+                if (existingUrl?.trimEnd('/') == repo.url.trimEnd('/')) {
+                    return null // Already exists
+                }
+            }
+
+            // Add the repository
+            val repository = doc.createElement("repository")
+
+            val id = doc.createElement("id")
+            id.textContent = repo.id
+            repository.appendChild(id)
+
+            if (repo.name.isNotBlank() && repo.name != repo.id) {
+                val name = doc.createElement("name")
+                name.textContent = repo.name
+                repository.appendChild(name)
+            }
+
+            val url = doc.createElement("url")
+            url.textContent = repo.url
+            repository.appendChild(url)
+
+            repositories.appendChild(repository)
+
+            Pair(text, documentToString(doc))
+        } catch (e: Exception) {
+            log.error("Failed to modify pom.xml", e)
+            null
+        }
+    }
+
+    /**
+     * Apply pom.xml repository changes.
+     */
+    fun applyPomChanges(pomFile: VirtualFile, newContent: String, commandName: String) {
+        val document = FileDocumentManager.getInstance().getDocument(pomFile) ?: return
+
+        WriteCommandAction.runWriteCommandAction(project, commandName, null, {
+            document.setText(newContent)
+        })
+    }
+
+    /**
+     * Get the root pom.xml file if this is a Maven project.
+     */
+    fun getRootPomFile(): VirtualFile? {
+        val basePath = project.basePath ?: return null
+        return LocalFileSystem.getInstance().findFileByPath("$basePath/pom.xml")
+    }
+
+    /**
+     * Check if this is a Maven project.
+     */
+    fun isMavenProject(): Boolean {
+        return getRootPomFile() != null
+    }
+
+    /**
+     * Check if this is a Gradle project.
+     */
+    fun isGradleProject(): Boolean {
+        return getRecommendedGradleTarget() != null
     }
 }
