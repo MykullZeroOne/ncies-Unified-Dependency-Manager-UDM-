@@ -3,18 +3,20 @@ description: Repository Information Overview
 alwaysApply: true
 ---
 
-# Package Finder Information
+# Unified Dependency Manager (UDP) Information
 
 ## Summary
-Package Finder is an IntelliJ IDEA plugin designed to facilitate searching and managing dependencies across multiple ecosystems, including Maven Central, Local Maven Repository, Private Nexus Repositories, Gradle Plugin Portal, and NPM. It provides a integrated tool window for exploring packages and copying dependency declarations or commands.
+Unified Dependency Manager (UDP) is an IntelliJ IDEA plugin designed to facilitate searching and managing dependencies across multiple ecosystems, including Maven Central, Local Maven Repository, Private Nexus Repositories, Gradle Plugin Portal, and NPM. It provides an integrated tool window for exploring packages and copying dependency declarations or commands.
+
+**GitHub**: https://github.com/maddrobot/udm
 
 ## Structure
 - **src/main/kotlin**: Contains the core logic for package discovery and UI implementation.
-    - `star.intellijplugin.pkgfinder.maven`: Maven Central, local repository, and Nexus integration.
-    - `star.intellijplugin.pkgfinder.npm`: NPM registry integration and model.
-    - `star.intellijplugin.pkgfinder.gradle`: Gradle Plugin Portal integration.
-    - `star.intellijplugin.pkgfinder.ui`: Tool window, tables, and custom UI components.
-    - `star.intellijplugin.pkgfinder.action`: IDE actions (e.g., Download Artifact, Open Folder).
+    - `com.maddrobot.plugins.udm.maven`: Maven Central, local repository, and Nexus integration.
+    - `com.maddrobot.plugins.udm.npm`: NPM registry integration and model.
+    - `com.maddrobot.plugins.udm.gradle`: Gradle Plugin Portal integration.
+    - `com.maddrobot.plugins.udm.ui`: Tool window, tables, and custom UI components.
+    - `com.maddrobot.plugins.udm.action`: IDE actions (e.g., Download Artifact, Open Folder).
 - **src/main/resources**: Configuration and UI resources.
     - `META-INF/plugin.xml`: Plugin entry point and component registration.
     - `messages/PackageFinder.properties`: Localization and display strings.
@@ -23,9 +25,9 @@ Package Finder is an IntelliJ IDEA plugin designed to facilitate searching and m
 - **.run/**: Pre-defined IntelliJ IDEA run configurations for development and testing.
 
 ## Language & Runtime
-**Language**: Kotlin  
-**Version**: Kotlin 2.2.0, JVM 21 (Toolchain)  
-**Build System**: Gradle 9.0.0 (Kotlin DSL)  
+**Language**: Kotlin
+**Version**: Kotlin 2.2.0, JVM 21 (Toolchain)
+**Build System**: Gradle 9.0.0 (Kotlin DSL)
 **Package Manager**: Gradle with Version Catalog
 
 ## Dependencies
@@ -55,9 +57,9 @@ Package Finder is an IntelliJ IDEA plugin designed to facilitate searching and m
 ```
 
 ## Testing
-**Framework**: JUnit 4 / IntelliJ Platform Test Framework  
-**Test Location**: `src/test/kotlin`  
-**Naming Convention**: Files ending in `Test.kt`  
+**Framework**: JUnit 4 / IntelliJ Platform Test Framework
+**Test Location**: `src/test/kotlin`
+**Naming Convention**: Files ending in `Test.kt`
 **Configuration**: Handled via `intellijPlatformTesting` in `build.gradle.kts`.
 
 **Run Command**:
@@ -67,6 +69,6 @@ Package Finder is an IntelliJ IDEA plugin designed to facilitate searching and m
 
 ## Main Files & Resources
 - **Plugin Manifest**: `src/main/resources/META-INF/plugin.xml`
-- **Tool Window Factory**: `star.intellijplugin.pkgfinder.PackageFinderToolWindowFactory`
-- **Settings Configuration**: `star.intellijplugin.pkgfinder.setting.PackageFinderSettingWindow`
+- **Tool Window Factory**: `com.maddrobot.plugins.udm.PackageFinderToolWindowFactory`
+- **Settings Configuration**: `com.maddrobot.plugins.udm.setting.PackageFinderSettingWindow`
 - **Icons**: `src/main/resources/icons/`

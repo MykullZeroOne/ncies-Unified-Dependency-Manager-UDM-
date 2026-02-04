@@ -1,18 +1,17 @@
 <div align="center">
-    <a href="https://plugins.jetbrains.com/plugin/27946-package-finder">
+    <a href="https://github.com/maddrobot/udm">
         <img src="./src/main/resources/META-INF/pluginIcon.svg" width="200" height="200" alt="logo"/>
     </a>
 </div>
-<h1 align="center">Package Finder</h1>
-<p align="center">IntelliJ plugin for package/dependency search (Maven, Gradle, etc.)</p>
+<h1 align="center">Unified Dependency Manager (UDP)</h1>
+<p align="center">IntelliJ plugin for package/dependency search and management (Maven, Gradle, NPM)</p>
 
 <p align="center">
-<a href="https://plugins.jetbrains.com/plugin/27946-package-finder"><img src="https://img.shields.io/jetbrains/plugin/d/27946-package-finder.svg?style=flat-square" alt="downloads"></a>
-<a href="https://plugins.jetbrains.com/plugin/27946-package-finder"><img src="https://img.shields.io/jetbrains/plugin/v/27946-package-finder.svg?style=flat-square" alt="jetbrains plugin version"></a>
+<a href="https://github.com/maddrobot/udm"><img src="https://img.shields.io/badge/GitHub-maddrobot%2Fudm-blue?style=flat-square&logo=github" alt="GitHub"></a>
+<a href="https://github.com/maddrobot/udm/releases"><img src="https://img.shields.io/github/v/release/maddrobot/udm?style=flat-square" alt="release"></a>
 </p>
 <br>
 
-English | [简体中文](./README_cn.md)
 
 - [Installation](#Installation)
 - [Search from Maven Central](#search-from-maven-central)
@@ -23,7 +22,7 @@ English | [简体中文](./README_cn.md)
 
 <!-- Plugin description -->
 
-Search packages across multiple repositories with ease.
+Search and manage packages across multiple repositories with ease.
 
 **Features**
 
@@ -32,7 +31,8 @@ Search packages across multiple repositories with ease.
     * Explore local Maven repository.
     * Support Nexus private repository search.
 * Search Gradle plugins.
-* Search Npm packages.
+* Search NPM packages.
+* NuGet-style dependency management UI.
 
 <!-- Plugin description end -->
 
@@ -40,10 +40,9 @@ Search packages across multiple repositories with ease.
 
 ## Installation
 
-Simply search for Package Finder in the plugin marketplace, install it, and restart your IDE.
+Install from [GitHub Releases](https://github.com/maddrobot/udm/releases):
 
-> Alternatively, you can download the ZIP package
-> from the [Releases](https://github.com/drawsta/package-finder/releases) page
+> Download the ZIP package from the [Releases](https://github.com/maddrobot/udm/releases) page
 > and install it manually via **Plugins > Install Plugin from Disk...**.
 
 ## Search from Maven Central
@@ -68,13 +67,13 @@ search by group and artifact
 
 - Switch to **Local Repository** tab
 - **Double-click** to copy dependency
-- **Right-click &gt; Show in Explorer**
+- **Right-click > Show in Explorer**
 
 ![](screenshots/Screenshot_20250718_144540.png)
 
 ## Search Private Nexus Repository
 
-- Configure Nexus URL in plugin's settings: <kbd>Settings</kbd> > <kbd>Tools</kbd> > <kbd>Package Finder</kbd>
+- Configure Nexus URL in plugin's settings: <kbd>Settings</kbd> > <kbd>Tools</kbd> > <kbd>Unified Dependency Manager</kbd>
 - Search your private repository *(requires Nexus server to allow anonymous search API access)*
 
 ![](screenshots/Screenshot_20250721_153735.png)
@@ -100,11 +99,17 @@ Please see [CHANGELOG](CHANGELOG.md) for more information what has changed recen
 
 ## Compatibility Notes
 
-- ✔️ **Supported**: IntelliJ IDEA 242.0 — 252.*
-- ❌ **Incompatible**:
-    - Versions ≤ 241 (Missing `HttpConnectionUtils` class)
-    - Versions ≤ 233 (API changes in `TextComponentEmptyText` and `HttpConnectionUtils`)
+- Supported: IntelliJ IDEA 242.0 - 252.*
+- Incompatible:
+    - Versions <= 241 (Missing `HttpConnectionUtils` class)
+    - Versions <= 233 (API changes in `TextComponentEmptyText` and `HttpConnectionUtils`)
 
 ## License
 
 Please see [LICENSE](LICENSE) for details.
+
+## Links
+
+- **GitHub**: https://github.com/maddrobot/udm
+- **Issues**: https://github.com/maddrobot/udm/issues
+- **Releases**: https://github.com/maddrobot/udm/releases

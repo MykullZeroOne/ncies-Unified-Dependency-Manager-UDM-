@@ -40,8 +40,14 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.mavenModel)
 
+    // JUnit 4 for existing platform tests
     testImplementation(libs.junit)
     testImplementation(libs.opentest4j)
+
+    // JUnit 5 for Starter integration tests
+    testImplementation(libs.junit5)
+    testRuntimeOnly(libs.junit5.launcher)
+    testImplementation(libs.kodein)
 
     // IntelliJ Platform Gradle Plugin Dependencies Extension - read more: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-dependencies-extension.html
     intellijPlatform {
@@ -56,8 +62,11 @@ dependencies {
         // Module Dependencies. Uses `platformBundledModules` property from the gradle.properties file for bundled IntelliJ Platform modules.
         bundledModules(providers.gradleProperty("platformBundledModules").map { it.split(',') })
 
+        // Platform test framework for BasePlatformTestCase unit tests
         testFramework(TestFrameworkType.Platform)
 
+        // Starter test framework for IDE integration tests
+        testFramework(TestFrameworkType.Starter)
     }
 }
 
@@ -153,6 +162,35 @@ tasks {
 
     publishPlugin {
         dependsOn(patchChangelog)
+    }
+
+    test {
+        // Ensure plugin is built before running integration tests
+        dependsOn(buildPlugin)
+
+        // Pass the built plugin path to integration tests
+        systemProperty("path.to.build.plugin", buildPlugin.get().archiveFile.get().asFile.absolutePath)
+
+        // Use JUnit 5 platform for Starter integration tests
+        useJUnitPlatform()
+    }
+    withType<JavaExec>().configureEach {
+        if (name.startsWith("runIde")) {
+            jvmArgs(
+                "-Xms512m",
+                "-Xmx2048m",
+                "-XX:MaxMetaspaceSize=768m",
+            )
+        }
+    }
+
+    // Increase heap for unit/integration tests (they can also start IDE components)
+    withType<Test>().configureEach {
+        minHeapSize = "512m"
+        maxHeapSize = "2048m"
+        jvmArgs(
+            "-XX:MaxMetaspaceSize=768m",
+        )
     }
 }
 
