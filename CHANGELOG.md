@@ -4,6 +4,13 @@
 
 ## [Unreleased]
 
+## [0.26.0] - 2026-02-04
+
+### Fixed
+
+- Filter out invalid/placeholder repository URLs from search operations
+- Prevents connection errors from misconfigured mirror repositories (e.g., 0.0.0.0)
+
 ## [0.25.0] - 2025-02-03
 
 ### Changed
@@ -22,6 +29,7 @@
 
 - Pagination buttons in Gradle plugin search
 
-[Unreleased]: https://github.com/maddrobot/udm/compare/v0.25.0...HEAD
+[Unreleased]: https://github.com/maddrobot/udm/compare/v0.26.0...HEAD
+[0.26.0]: https://github.com/maddrobot/udm/compare/v0.25.0...v0.26.0
 [0.25.0]: https://github.com/maddrobot/udm/compare/v0.24.2...v0.25.0
 [0.24.2]: https://github.com/maddrobot/udm/commits/v0.24.2
