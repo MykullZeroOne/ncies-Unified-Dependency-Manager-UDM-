@@ -4,6 +4,19 @@
 
 ## [Unreleased]
 
+## [0.27.0] - 2026-02-04
+
+### Added
+
+- Package caching system to reduce network calls and improve performance
+- Version lookups cached for 1 hour, search results for 5 minutes
+- New Caches tab with cache statistics and management controls
+- Buttons to clear version cache, search cache, or all caches
+
+### Fixed
+
+- Timeout errors when checking latest versions now handled gracefully
+
 ## [0.26.0] - 2026-02-04
 
 ### Fixed
@@ -29,7 +42,8 @@
 
 - Pagination buttons in Gradle plugin search
 
-[Unreleased]: https://github.com/maddrobot/udm/compare/v0.26.0...HEAD
+[Unreleased]: https://github.com/maddrobot/udm/compare/v0.27.0...HEAD
+[0.27.0]: https://github.com/maddrobot/udm/compare/v0.26.0...v0.27.0
 [0.26.0]: https://github.com/maddrobot/udm/compare/v0.25.0...v0.26.0
 [0.25.0]: https://github.com/maddrobot/udm/compare/v0.24.2...v0.25.0
 [0.24.2]: https://github.com/maddrobot/udm/commits/v0.24.2

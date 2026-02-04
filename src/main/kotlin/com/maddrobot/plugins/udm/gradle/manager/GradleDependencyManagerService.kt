@@ -13,7 +13,7 @@ import org.jetbrains.plugins.gradle.util.GradleConstants
 class GradleDependencyManagerService(private val project: Project) {
 
     private val scanner = GradleDependencyScanner(project)
-    private val updateService = GradleUpdateService()
+    private val updateService = GradleUpdateService(project)
 
     var installedDependencies: List<InstalledDependency> = emptyList()
         private set

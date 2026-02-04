@@ -16,6 +16,7 @@ import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.components.JBTabbedPane
 import com.intellij.util.ui.JBUI
 import com.maddrobot.plugins.udm.PackageFinderBundle.message
+import com.maddrobot.plugins.udm.gradle.manager.service.PackageCacheService
 import com.maddrobot.plugins.udm.gradle.manager.service.PluginLogService
 import com.maddrobot.plugins.udm.gradle.manager.service.RepositoryConfig
 import com.maddrobot.plugins.udm.gradle.manager.service.RepositoryConfigWriter
@@ -411,12 +412,89 @@ class MainToolWindowPanel(
 
 
     private fun createCachesPanel(): JPanel {
+        val cacheService = PackageCacheService.getInstance(project)
+
+        // Stats text area
+        val statsTextArea = JTextArea().apply {
+            isEditable = false
+            font = Font(Font.MONOSPACED, Font.PLAIN, 12)
+            background = JBColor.PanelBackground
+            foreground = JBColor.foreground()
+            text = cacheService.getFormattedSummary()
+        }
+
+        // Function to refresh stats display
+        fun refreshStats() {
+            statsTextArea.text = cacheService.getFormattedSummary()
+        }
+
         return JPanel(BorderLayout()).apply {
-            val label = JBLabel(message("unified.tab.caches.coming")).apply {
-                horizontalAlignment = SwingConstants.CENTER
-                foreground = JBColor.GRAY
+            border = JBUI.Borders.empty(8)
+
+            // Header panel with description
+            val headerPanel = JPanel(BorderLayout()).apply {
+                border = JBUI.Borders.emptyBottom(12)
+                add(JBLabel("<html><b>Package Cache</b><br>" +
+                    "<font color='gray'>Caching reduces network calls and improves performance. " +
+                    "Version lookups are cached for 1 hour, search results for 5 minutes.</font></html>"), BorderLayout.CENTER)
             }
-            add(label, BorderLayout.CENTER)
+            add(headerPanel, BorderLayout.NORTH)
+
+            // Center: Stats display
+            add(JBScrollPane(statsTextArea).apply {
+                border = JBUI.Borders.empty()
+            }, BorderLayout.CENTER)
+
+            // Bottom: Action buttons
+            val buttonPanel = JPanel(FlowLayout(FlowLayout.LEFT, 8, 8)).apply {
+                border = JBUI.Borders.emptyTop(8)
+
+                add(JButton("Refresh Stats").apply {
+                    icon = AllIcons.Actions.Refresh
+                    addActionListener {
+                        refreshStats()
+                    }
+                })
+
+                add(JButton("Clear Version Cache").apply {
+                    icon = AllIcons.Actions.GC
+                    toolTipText = "Clear cached version lookups (1 hour TTL)"
+                    addActionListener {
+                        cacheService.clearVersionCache()
+                        refreshStats()
+                        Messages.showInfoMessage(project, "Version cache cleared.", "Cache Cleared")
+                    }
+                })
+
+                add(JButton("Clear Search Cache").apply {
+                    icon = AllIcons.Actions.GC
+                    toolTipText = "Clear cached search results (5 minute TTL)"
+                    addActionListener {
+                        cacheService.clearSearchCache()
+                        refreshStats()
+                        Messages.showInfoMessage(project, "Search cache cleared.", "Cache Cleared")
+                    }
+                })
+
+                add(JButton("Clear All Caches").apply {
+                    icon = AllIcons.Actions.Restart
+                    toolTipText = "Clear all cached data"
+                    addActionListener {
+                        val result = Messages.showYesNoDialog(
+                            project,
+                            "Are you sure you want to clear all caches?",
+                            "Clear All Caches",
+                            Messages.getQuestionIcon()
+                        )
+                        if (result == Messages.YES) {
+                            cacheService.clearAll()
+                            refreshStats()
+                            Messages.showInfoMessage(project, "All caches cleared.", "Cache Cleared")
+                        }
+                    }
+                })
+            }
+            add(buttonPanel, BorderLayout.SOUTH)
         }
     }
 
