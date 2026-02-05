@@ -23,6 +23,8 @@ import com.maddrobot.plugins.udm.gradle.manager.model.AvailableRepository
 import com.maddrobot.plugins.udm.gradle.manager.model.PackageMetadata
 import com.maddrobot.plugins.udm.gradle.manager.model.PackageSource
 import com.maddrobot.plugins.udm.gradle.manager.model.UnifiedPackage
+import com.maddrobot.plugins.udm.gradle.manager.model.VulnerabilityInfo
+import com.maddrobot.plugins.udm.gradle.manager.model.VulnerabilitySeverity
 import com.maddrobot.plugins.udm.gradle.manager.service.DependencyCoordinates
 import com.maddrobot.plugins.udm.gradle.manager.service.PackageDetails
 import com.maddrobot.plugins.udm.gradle.manager.service.PackageMetadataService
@@ -170,34 +172,32 @@ class PackageDetailsPanel(
         icon = AllIcons.Actions.OpenNewTab
     }
 
+    // === VULNERABILITY SECTION ===
+    private val vulnerabilityPanel = JPanel().apply {
+        layout = BoxLayout(this, BoxLayout.Y_AXIS)
+        border = JBUI.Borders.empty(4)
+    }
+
     // Collapsible section panels (initialized in createContentPanel)
     private lateinit var dependenciesCollapsible: CollapsibleSectionPanel
     private lateinit var buildFileCollapsible: CollapsibleSectionPanel
+    private lateinit var vulnerabilityCollapsible: CollapsibleSectionPanel
 
     // === ACTION BUTTONS ===
-    private val primaryButtonColor = JBColor(0x4A90D9, 0x3574B0)
-    private val primaryButtonTextColor = JBColor.WHITE
-
     private val installButton = JButton(message("unified.details.button.install")).apply {
         preferredSize = Dimension(0, 40)
-        background = primaryButtonColor
-        foreground = primaryButtonTextColor
-        isOpaque = true
-        isBorderPainted = false
-        font = font.deriveFont(Font.BOLD)
     }
     private val updateButton = JButton(message("unified.details.button.update")).apply {
         preferredSize = Dimension(0, 40)
-        background = primaryButtonColor
-        foreground = primaryButtonTextColor
-        isOpaque = true
-        isBorderPainted = false
-        font = font.deriveFont(Font.BOLD)
     }
     private val downgradeButton = JButton(message("unified.details.button.downgrade")).apply {
         preferredSize = Dimension(0, 40)
     }
     private val uninstallButton = JButton(message("unified.details.button.uninstall")).apply {
+        preferredSize = Dimension(0, 40)
+    }
+    private val configureButton = JButton(message("unified.plugin.configure.button")).apply {
+        icon = AllIcons.General.Settings
         preferredSize = Dimension(0, 40)
     }
 
@@ -219,6 +219,8 @@ class PackageDetailsPanel(
     var onUninstallRequested: ((UnifiedPackage) -> Unit)? = null
     var onVersionsNeeded: ((UnifiedPackage, (List<String>) -> Unit) -> Unit)? = null
     var onModulesNeeded: (() -> List<String>)? = null
+    var onIgnoreVulnerabilityRequested: ((UnifiedPackage, VulnerabilityInfo) -> Unit)? = null
+    var onConfigurePluginRequested: ((UnifiedPackage) -> Unit)? = null
 
     private val detailsPanel = JPanel(BorderLayout())
     private val emptyPanel = createEmptyPanel()
@@ -322,6 +324,17 @@ class PackageDetailsPanel(
             maximumSize = Dimension(Int.MAX_VALUE, 200)
         }
 
+        // === VULNERABILITY SECTION (Collapsible, expanded by default when present) ===
+        vulnerabilityCollapsible = CollapsibleSectionPanel(
+            message("unified.vulnerability.title"),
+            initiallyExpanded = true
+        ).apply {
+            alignmentX = Component.LEFT_ALIGNMENT
+            maximumSize = Dimension(Int.MAX_VALUE, 300)
+            setContent(vulnerabilityPanel)
+            isVisible = false // Hidden by default, shown when vulnerabilities detected
+        }
+
         // === DEPENDENCIES SECTION (Collapsible, collapsed by default) ===
         setupDependenciesPanel()
         dependenciesCollapsible = CollapsibleSectionPanel(
@@ -355,6 +368,8 @@ class PackageDetailsPanel(
             installButton.alignmentX = Component.LEFT_ALIGNMENT
             updateButton.maximumSize = Dimension(Int.MAX_VALUE, 40)
             updateButton.alignmentX = Component.LEFT_ALIGNMENT
+            configureButton.maximumSize = Dimension(Int.MAX_VALUE, 40)
+            configureButton.alignmentX = Component.LEFT_ALIGNMENT
             downgradeButton.maximumSize = Dimension(Int.MAX_VALUE, 40)
             downgradeButton.alignmentX = Component.LEFT_ALIGNMENT
             uninstallButton.maximumSize = Dimension(Int.MAX_VALUE, 40)
@@ -364,6 +379,8 @@ class PackageDetailsPanel(
             add(Box.createVerticalStrut(8))
             add(updateButton)
             add(Box.createVerticalStrut(8))
+            add(configureButton)
+            add(Box.createVerticalStrut(8))
             add(downgradeButton)
             add(Box.createVerticalStrut(8))
             add(uninstallButton)
@@ -371,6 +388,7 @@ class PackageDetailsPanel(
 
         // Assemble main panel
         mainPanel.add(headerPanel)
+        mainPanel.add(vulnerabilityCollapsible)
         mainPanel.add(descriptionCollapsible)
         mainPanel.add(publisherPanel)
         mainPanel.add(sourceRepoPanel)
@@ -824,6 +842,12 @@ class PackageDetailsPanel(
             }
         }
 
+        configureButton.addActionListener {
+            selectedPackage?.let { pkg ->
+                onConfigurePluginRequested?.invoke(pkg)
+            }
+        }
+
         homepageLink.addHyperlinkListener {
             val url = currentDetails?.homepage ?: selectedPackage?.homepage
             url?.let { BrowserUtil.browse(it) }
@@ -899,6 +923,9 @@ class PackageDetailsPanel(
             homepageLink.isVisible = true
         }
 
+        // Vulnerability info
+        updateVulnerabilitySection(pkg)
+
         // Build file info
         updateBuildFileInfo(pkg)
 
@@ -959,6 +986,8 @@ class PackageDetailsPanel(
         val buildFilePath = when (val metadata = pkg.metadata) {
             is PackageMetadata.GradleMetadata -> metadata.buildFile
             is PackageMetadata.MavenInstalledMetadata -> metadata.pomFile
+            is PackageMetadata.GradlePluginMetadata -> metadata.buildFile
+            is PackageMetadata.MavenPluginMetadata -> metadata.pomFile
             else -> null
         }
 
@@ -969,6 +998,149 @@ class PackageDetailsPanel(
         } else {
             buildFileCollapsible.isVisible = false
         }
+    }
+
+    /**
+     * Update the vulnerability section with CVE info and fix version suggestion.
+     */
+    private fun updateVulnerabilitySection(pkg: UnifiedPackage) {
+        vulnerabilityPanel.removeAll()
+
+        val vulnInfo = pkg.vulnerabilityInfo
+        if (vulnInfo == null) {
+            vulnerabilityCollapsible.isVisible = false
+            return
+        }
+
+        vulnerabilityCollapsible.isVisible = true
+
+        // Severity badge
+        val severityColor = when (vulnInfo.severity) {
+            VulnerabilitySeverity.CRITICAL -> JBColor(0xD32F2F, 0xEF5350)
+            VulnerabilitySeverity.HIGH -> JBColor(0xE64A19, 0xFF7043)
+            VulnerabilitySeverity.MEDIUM -> JBColor(0xF57C00, 0xFFB74D)
+            VulnerabilitySeverity.LOW -> JBColor(0xFBC02D, 0xFFF176)
+            VulnerabilitySeverity.UNKNOWN -> JBColor.GRAY
+        }
+
+        val severityRow = JPanel(FlowLayout(FlowLayout.LEFT, 4, 0)).apply {
+            alignmentX = Component.LEFT_ALIGNMENT
+            maximumSize = Dimension(Int.MAX_VALUE, 28)
+
+            add(JBLabel(message("unified.vulnerability.severity")).apply {
+                foreground = labelColor
+            })
+
+            // Severity badge label
+            add(JBLabel(vulnInfo.severity.name).apply {
+                foreground = JBColor.WHITE
+                isOpaque = true
+                background = severityColor
+                border = JBUI.Borders.empty(2, 8)
+                font = font.deriveFont(Font.BOLD, 11f)
+            })
+        }
+        vulnerabilityPanel.add(severityRow)
+        vulnerabilityPanel.add(Box.createVerticalStrut(4))
+
+        // CVE ID
+        if (vulnInfo.cveId != null) {
+            val cveRow = JPanel(FlowLayout(FlowLayout.LEFT, 4, 0)).apply {
+                alignmentX = Component.LEFT_ALIGNMENT
+                maximumSize = Dimension(Int.MAX_VALUE, 24)
+                add(JBLabel(message("unified.vulnerability.cve")).apply {
+                    foreground = labelColor
+                })
+                add(JBLabel(vulnInfo.cveId).apply {
+                    foreground = severityColor
+                    font = font.deriveFont(Font.BOLD)
+                })
+            }
+            vulnerabilityPanel.add(cveRow)
+            vulnerabilityPanel.add(Box.createVerticalStrut(4))
+        }
+
+        // Description
+        if (vulnInfo.description != null) {
+            val descLabel = JBLabel("<html><body style='width:240px'>${vulnInfo.description}</body></html>").apply {
+                alignmentX = Component.LEFT_ALIGNMENT
+                foreground = UIUtil.getLabelForeground()
+            }
+            vulnerabilityPanel.add(descLabel)
+            vulnerabilityPanel.add(Box.createVerticalStrut(4))
+        }
+
+        // Affected versions
+        if (vulnInfo.affectedVersions != null) {
+            val affectedRow = JPanel(FlowLayout(FlowLayout.LEFT, 4, 0)).apply {
+                alignmentX = Component.LEFT_ALIGNMENT
+                maximumSize = Dimension(Int.MAX_VALUE, 24)
+                add(JBLabel(message("unified.vulnerability.affected")).apply {
+                    foreground = labelColor
+                })
+                add(JBLabel(vulnInfo.affectedVersions))
+            }
+            vulnerabilityPanel.add(affectedRow)
+            vulnerabilityPanel.add(Box.createVerticalStrut(4))
+        }
+
+        // Fix version suggestion - prominent display with action button
+        if (vulnInfo.fixedVersion != null) {
+            val fixRow = JPanel(FlowLayout(FlowLayout.LEFT, 4, 0)).apply {
+                alignmentX = Component.LEFT_ALIGNMENT
+                maximumSize = Dimension(Int.MAX_VALUE, 36)
+
+                add(JBLabel(message("unified.vulnerability.fixed")).apply {
+                    foreground = labelColor
+                })
+
+                // Highlight the fix version prominently
+                add(JBLabel(vulnInfo.fixedVersion).apply {
+                    foreground = JBColor(0x4CAF50, 0x81C784)
+                    font = font.deriveFont(Font.BOLD, 13f)
+                })
+
+                // Add "Update to fix" button
+                add(Box.createHorizontalStrut(8))
+                add(JButton(message("unified.vulnerability.update.to.fix")).apply {
+                    toolTipText = "Update to ${vulnInfo.fixedVersion} to fix this vulnerability"
+                    addActionListener {
+                        onUpdateRequested?.invoke(pkg, vulnInfo.fixedVersion!!)
+                    }
+                })
+            }
+            vulnerabilityPanel.add(fixRow)
+            vulnerabilityPanel.add(Box.createVerticalStrut(4))
+        }
+
+        // Advisory link
+        if (vulnInfo.advisoryUrl != null) {
+            val advisoryLink = HyperlinkLabel(message("unified.vulnerability.advisory")).apply {
+                alignmentX = Component.LEFT_ALIGNMENT
+            }
+            advisoryLink.addHyperlinkListener {
+                BrowserUtil.browse(vulnInfo.advisoryUrl)
+            }
+            vulnerabilityPanel.add(advisoryLink)
+            vulnerabilityPanel.add(Box.createVerticalStrut(8))
+        }
+
+        // Ignore button
+        val ignoreRow = JPanel(FlowLayout(FlowLayout.LEFT, 4, 0)).apply {
+            alignmentX = Component.LEFT_ALIGNMENT
+            maximumSize = Dimension(Int.MAX_VALUE, 36)
+
+            add(JButton(message("unified.vulnerability.ignore.button")).apply {
+                toolTipText = message("unified.vulnerability.ignore.tooltip")
+                addActionListener {
+                    onIgnoreVulnerabilityRequested?.invoke(pkg, vulnInfo)
+                }
+            })
+        }
+        vulnerabilityPanel.add(ignoreRow)
+
+        vulnerabilityPanel.revalidate()
+        vulnerabilityPanel.repaint()
     }
 
     private fun loadTransitiveDependencies() {
@@ -1002,6 +1174,8 @@ class PackageDetailsPanel(
         val (buildFilePath, offset) = when (val metadata = pkg.metadata) {
             is PackageMetadata.GradleMetadata -> Pair(metadata.buildFile, metadata.offset)
             is PackageMetadata.MavenInstalledMetadata -> Pair(metadata.pomFile, metadata.offset)
+            is PackageMetadata.GradlePluginMetadata -> Pair(metadata.buildFile, metadata.offset)
+            is PackageMetadata.MavenPluginMetadata -> Pair(metadata.pomFile, metadata.offset)
             else -> return
         }
 
@@ -1028,6 +1202,12 @@ class PackageDetailsPanel(
     }
 
     private fun updateButtonStates(pkg: UnifiedPackage) {
+        // Configure button: only visible for installed plugins
+        val isPlugin = pkg.source == PackageSource.GRADLE_PLUGIN_INSTALLED ||
+                pkg.source == PackageSource.MAVEN_PLUGIN_INSTALLED
+        configureButton.isVisible = isPlugin && pkg.isInstalled
+        configureButton.isEnabled = isPlugin && pkg.isInstalled
+
         when {
             !pkg.isInstalled -> {
                 // Not installed: show Install only
@@ -1109,6 +1289,8 @@ class PackageDetailsPanel(
             PackageSource.NEXUS -> "Nexus"
             PackageSource.LOCAL_MAVEN -> "Local Maven"
             PackageSource.GRADLE_PLUGIN -> "Gradle Plugin Portal"
+            PackageSource.GRADLE_PLUGIN_INSTALLED -> "Gradle Plugin (Installed)"
+            PackageSource.MAVEN_PLUGIN_INSTALLED -> "Maven Plugin (Installed)"
         }
     }
 

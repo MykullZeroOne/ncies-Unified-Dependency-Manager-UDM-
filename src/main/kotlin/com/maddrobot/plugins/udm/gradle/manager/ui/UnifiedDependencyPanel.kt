@@ -1,6 +1,7 @@
 package com.maddrobot.plugins.udm.gradle.manager.ui
 
 import com.intellij.icons.AllIcons
+import com.intellij.ide.BrowserUtil
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.ActionPlaces
@@ -24,10 +25,18 @@ import com.maddrobot.plugins.udm.gradle.manager.service.PluginLogService
 import com.maddrobot.plugins.udm.gradle.manager.service.RepositoryConfig
 import com.maddrobot.plugins.udm.gradle.manager.service.RepositoryDiscoveryService
 import com.maddrobot.plugins.udm.gradle.manager.service.RepositoryType
+import com.maddrobot.plugins.udm.gradle.manager.service.VulnerabilityIgnoreService
+import com.maddrobot.plugins.udm.gradle.manager.service.VulnerabilityService
 import com.maddrobot.plugins.udm.maven.DependencyService
 import com.maddrobot.plugins.udm.maven.manager.MavenDependencyModifier
 import com.maddrobot.plugins.udm.maven.manager.MavenDependencyScanner
 import com.maddrobot.plugins.udm.maven.manager.MavenInstalledDependency
+import com.maddrobot.plugins.udm.maven.manager.MavenPluginScanner
+import com.maddrobot.plugins.udm.maven.manager.MavenInstalledPlugin
+import com.maddrobot.plugins.udm.maven.manager.MavenPluginModifier
+import com.maddrobot.plugins.udm.maven.manager.MavenPluginUpdateService
+import com.maddrobot.plugins.udm.maven.manager.PluginDescriptorService
+import com.maddrobot.plugins.udm.setting.PackageFinderSettingState
 import com.maddrobot.plugins.udm.npm.NpmRegistryService
 import com.maddrobot.plugins.udm.setting.PackageFinderSetting
 import com.maddrobot.plugins.udm.maven.MavenRepositorySource
@@ -75,6 +84,16 @@ class UnifiedDependencyPanel(
     // Maven Services
     private val mavenScanner = MavenDependencyScanner(project)
     private val mavenModifier = MavenDependencyModifier(project)
+
+    // Plugin Scanners and Modifiers
+    private val gradlePluginScanner = GradlePluginScanner(project)
+    private val gradlePluginModifier = GradlePluginModifier(project)
+    private val mavenPluginScanner = MavenPluginScanner(project)
+    private val mavenPluginModifier = MavenPluginModifier(project)
+
+    // Vulnerability Service
+    private val vulnerabilityService = VulnerabilityService.getInstance(project)
+    private val vulnerabilityIgnoreService = VulnerabilityIgnoreService.getInstance(project)
 
     // Repository Discovery Service
     private val repoDiscoveryService = RepositoryDiscoveryService.getInstance(project)
@@ -325,6 +344,20 @@ class UnifiedDependencyPanel(
             getAvailableModulesForInstall()
         }
 
+        // Vulnerability ignore callback
+        detailsPanel.onIgnoreVulnerabilityRequested = { pkg, vulnInfo ->
+            handleIgnoreVulnerability(pkg, vulnInfo)
+        }
+
+        // Plugin configure callback
+        detailsPanel.onConfigurePluginRequested = { pkg ->
+            when (pkg.source) {
+                PackageSource.MAVEN_PLUGIN_INSTALLED -> showMavenPluginConfigDialog(pkg)
+                PackageSource.GRADLE_PLUGIN_INSTALLED -> showGradlePluginConfigDialog(pkg)
+                else -> {}
+            }
+        }
+
         // Context menu callbacks for list panel (enables keyboard shortcuts and right-click actions)
         listPanel.contextMenuCallbacks = PackageContextMenuBuilder.ContextMenuCallbacks(
             onInstall = { pkg ->
@@ -363,6 +396,12 @@ class UnifiedDependencyPanel(
             },
             onUpgradeSelected = { packages ->
                 performBatchUpgrade(packages)
+            },
+            onViewAdvisory = { vulnInfo ->
+                val url = vulnInfo.advisoryUrl ?: vulnInfo.cveId?.let { "https://nvd.nist.gov/vuln/detail/$it" }
+                if (url != null) {
+                    BrowserUtil.browse(url)
+                }
             }
         )
     }
@@ -401,125 +440,96 @@ class UnifiedDependencyPanel(
     }
 
     private fun loadInitialData() {
-        // Populate search repository selector
-        populateSearchRepoSelector()
+        // All initial data loading involves file system I/O (repository discovery,
+        // dependency scanning, etc.) and must run off the EDT to avoid SlowOperations errors.
+        ApplicationManager.getApplication().executeOnPooledThread {
+            try {
+                // Populate search repository selector (reads gradle.properties, settings.xml, etc.)
+                val repos = repoDiscoveryService.getConfiguredRepositories()
+                    .filter { it.type != RepositoryType.NPM && it.type != RepositoryType.GRADLE_PLUGIN_PORTAL }
+                    .filter { it.enabled }
 
-        // Refresh Gradle dependencies if it's a Gradle project
-        if (isGradleProject) {
-            gradleDependencyService.refresh()
+                // Detect project types (reads file system)
+                val isGradle = isGradleProject
+                val isMaven = isMavenProject
+
+                ApplicationManager.getApplication().invokeLater {
+                    // Update UI components on EDT
+                    searchableRepos = repos
+                    uiLog.info("Populating feed selector with ${repos.size} repositories", "Init")
+                    feedSelectorAction.setFeeds(repos)
+
+                    for (repo in repos) {
+                        val hasAuth = repo.username != null || repo.password != null
+                        val authInfo = if (hasAuth) {
+                            "HAS CREDENTIALS (user=${repo.username ?: "null"}, pw=${repo.password?.let { "${it.length} chars" } ?: "null"})"
+                        } else {
+                            "NO CREDENTIALS"
+                        }
+                        uiLog.info("Repository: ${repo.name} | id='${repo.id}' | type=${repo.type} | source=${repo.source} | $authInfo", "Init")
+                    }
+
+                    uiLog.info("Feed selector initialized with ${repos.size} repositories", "Init")
+                }
+
+                // Trigger dependency refreshes (these already handle their own threading)
+                if (isGradle) {
+                    gradleDependencyService.refresh()
+                }
+                if (isMaven) {
+                    refreshMavenDependencies()
+                }
+
+                // Load any already-cached installed packages
+                ApplicationManager.getApplication().invokeLater {
+                    loadInstalledPackages()
+                }
+            } catch (e: Exception) {
+                log.error("Failed to load initial data", e)
+                uiLog.error("Failed to load initial data: ${e.message}", "Init")
+            }
         }
-
-        // Scan Maven dependencies if it's a Maven project
-        if (isMavenProject) {
-            refreshMavenDependencies()
-        }
-
-        // Load any already-cached installed packages immediately
-        // (The refresh callbacks will update again when async scan completes)
-        loadInstalledPackages()
     }
 
+    /**
+     * Populate the search repository selector.
+     * Must be called from a background thread since it performs file system I/O.
+     * UI updates are dispatched to the EDT internally.
+     */
     private fun populateSearchRepoSelector() {
         // Get all searchable repositories (exclude NPM and Gradle Plugin Portal for now)
-        val allRepos = repoDiscoveryService.getConfiguredRepositories()
+        // This reads gradle.properties, settings.xml, etc. — must be off EDT
+        val repos = repoDiscoveryService.getConfiguredRepositories()
             .filter { it.type != RepositoryType.NPM && it.type != RepositoryType.GRADLE_PLUGIN_PORTAL }
             .filter { it.enabled }
 
-        // Filter out repositories with invalid/placeholder URLs
-        val (validRepos, invalidRepos) = allRepos.partition { isSearchableRepository(it) }
-        searchableRepos = validRepos
+        ApplicationManager.getApplication().invokeLater {
+            searchableRepos = repos
+            uiLog.info("Populating feed selector with ${repos.size} repositories", "Init")
 
-        // Log any skipped repositories
-        for (repo in invalidRepos) {
-            uiLog.warn("Skipping repository with invalid URL: ${repo.name} (${repo.url})", "Init")
-        }
+            // Update the feed selector action with available repositories
+            feedSelectorAction.setFeeds(repos)
 
-        uiLog.info("Populating feed selector with ${searchableRepos.size} repositories (${invalidRepos.size} skipped)", "Init")
-
-        // Update the feed selector action with available repositories
-        feedSelectorAction.setFeeds(searchableRepos)
-
-        for (repo in searchableRepos) {
-            val hasAuth = repo.username != null || repo.password != null
-            val authInfo = if (hasAuth) {
-                "HAS CREDENTIALS (user=${repo.username ?: "null"}, pw=${repo.password?.let { "${it.length} chars" } ?: "null"})"
-            } else {
-                "NO CREDENTIALS"
+            for (repo in repos) {
+                val hasAuth = repo.username != null || repo.password != null
+                val authInfo = if (hasAuth) {
+                    "HAS CREDENTIALS (user=${repo.username ?: "null"}, pw=${repo.password?.let { "${it.length} chars" } ?: "null"})"
+                } else {
+                    "NO CREDENTIALS"
+                }
+                uiLog.info("Repository: ${repo.name} | id='${repo.id}' | type=${repo.type} | source=${repo.source} | $authInfo", "Init")
             }
-            uiLog.info("Repository: ${repo.name} | id='${repo.id}' | type=${repo.type} | source=${repo.source} | $authInfo", "Init")
-        }
 
-        uiLog.info("Feed selector initialized with ${searchableRepos.size} repositories", "Init")
+            uiLog.info("Feed selector initialized with ${repos.size} repositories", "Init")
+        }
     }
 
     /**
      * Refresh the repository selector (call this after adding new repositories).
      */
     fun refreshRepositories() {
-        populateSearchRepoSelector()
-    }
-
-    /**
-     * Check if a repository has a valid, searchable URL.
-     * Filters out placeholder URLs, invalid hosts, and unreachable configurations.
-     */
-    private fun isSearchableRepository(repo: RepositoryConfig): Boolean {
-        val url = repo.url.trim()
-
-        // Must have a non-empty URL
-        if (url.isBlank()) {
-            return false
-        }
-
-        // Must start with http:// or https://
-        if (!url.startsWith("http://") && !url.startsWith("https://")) {
-            return false
-        }
-
-        try {
-            val parsedUrl = java.net.URL(url)
-            val host = parsedUrl.host.lowercase()
-
-            // Filter out placeholder/invalid hosts
-            val invalidHosts = setOf(
-                "0.0.0.0",
-                "127.0.0.1",
-                "localhost",
-                "example.com",
-                "example.org",
-                "placeholder",
-                "your-server",
-                "your-repo",
-                ""
-            )
-
-            if (host in invalidHosts) {
-                return false
-            }
-
-            // Filter out URLs that look like placeholders
-            val placeholderPatterns = listOf(
-                "your-",
-                "my-",
-                "<",
-                ">",
-                "{",
-                "}",
-                "xxx",
-                "placeholder",
-                "change-me",
-                "todo"
-            )
-
-            val lowerUrl = url.lowercase()
-            if (placeholderPatterns.any { lowerUrl.contains(it) }) {
-                return false
-            }
-
-            return true
-        } catch (e: Exception) {
-            // Invalid URL format
-            return false
+        ApplicationManager.getApplication().executeOnPooledThread {
+            populateSearchRepoSelector()
         }
     }
 
@@ -612,16 +622,23 @@ class UnifiedDependencyPanel(
     /**
      * Load all installed packages into the unified list.
      * This is called on initial load and after refreshes.
+     * Also triggers vulnerability checking if enabled.
      */
     private fun loadInstalledPackages() {
         val packages = getAllInstalledPackages()
         listPanel.setPackages(packages)
+
+        // Check for vulnerabilities asynchronously if enabled
+        val settings = PackageFinderSettingState.getInstance()
+        if (settings.enableVulnerabilityScanning && settings.vulnerabilityScanOnLoad) {
+            checkVulnerabilitiesAsync(packages)
+        }
     }
 
     private fun getAllInstalledPackages(): List<UnifiedPackage> {
         val packages = mutableListOf<UnifiedPackage>()
 
-        // Add Gradle packages
+        // Add Gradle dependencies
         if (isGradleProject) {
             packages.addAll(
                 PackageAdapters.aggregateByPackage(
@@ -629,16 +646,147 @@ class UnifiedDependencyPanel(
                     gradleDependencyService.dependencyUpdates
                 )
             )
+
+            // Add Gradle plugins (scan separately from update check for resilience)
+            try {
+                val gradlePlugins = gradlePluginScanner.scanInstalledPlugins()
+                uiLog.debug("Found ${gradlePlugins.size} Gradle plugins", "Plugins")
+
+                val pluginUpdates = try {
+                    GradlePluginUpdateService.checkForUpdates(gradlePlugins)
+                } catch (e: Exception) {
+                    log.warn("Failed to check Gradle plugin updates", e)
+                    emptyList()
+                }
+
+                packages.addAll(
+                    PackageAdapters.aggregatePluginsByPackage(gradlePlugins, pluginUpdates)
+                )
+            } catch (e: Exception) {
+                log.warn("Failed to scan Gradle plugins", e)
+            }
         }
 
-        // Add Maven packages
+        // Add Maven dependencies
         if (isMavenProject) {
+            uiLog.debug("Maven project detected, scanning dependencies and plugins...", "Plugins")
+
             packages.addAll(
                 PackageAdapters.aggregateMavenByPackage(mavenInstalledDependencies)
             )
+
+            // Add Maven plugins (scan separately from update check for resilience)
+            try {
+                val mavenPlugins = mavenPluginScanner.scanInstalledPlugins()
+                uiLog.debug("Found ${mavenPlugins.size} Maven plugins", "Plugins")
+
+                val pluginUpdates = try {
+                    MavenPluginUpdateService.checkForUpdates(mavenPlugins)
+                } catch (e: Exception) {
+                    log.warn("Failed to check Maven plugin updates", e)
+                    emptyList()
+                }
+
+                packages.addAll(
+                    PackageAdapters.aggregateMavenPluginsByPackage(mavenPlugins, pluginUpdates)
+                )
+            } catch (e: Exception) {
+                log.warn("Failed to scan Maven plugins", e)
+            }
+        } else {
+            uiLog.debug("Not a Maven project (no root pom.xml found)", "Plugins")
         }
 
         return packages
+    }
+
+    /**
+     * Check vulnerabilities for installed packages asynchronously.
+     * Updates the package list when vulnerabilities are found.
+     */
+    private fun checkVulnerabilitiesAsync(packages: List<UnifiedPackage>) {
+        val settings = PackageFinderSettingState.getInstance()
+        if (!settings.enableVulnerabilityScanning) {
+            return
+        }
+
+        // Build list of dependencies to check (groupId, artifactId, version)
+        val depsToCheck = packages
+            .filter { it.isInstalled && it.installedVersion != null }
+            .map { Triple(it.publisher, it.name, it.installedVersion!!) }
+
+        if (depsToCheck.isEmpty()) return
+
+        uiLog.info("Checking vulnerabilities for ${depsToCheck.size} packages...", "Vulnerability")
+
+        vulnerabilityService.batchCheck(depsToCheck) { results ->
+            if (results.isEmpty()) {
+                uiLog.info("No vulnerabilities found", "Vulnerability")
+                return@batchCheck
+            }
+
+            // Count vulnerable packages
+            val vulnerableCount = results.count { it.value.isNotEmpty() }
+            uiLog.info("Found $vulnerableCount packages with vulnerabilities", "Vulnerability")
+
+            // Update packages with vulnerability info
+            // Prefer the most severe vulnerability that has a fix version;
+            // fall back to the most severe vulnerability overall
+            // Skip packages where the vulnerability has been explicitly ignored via build file comment
+            val updatedPackages = packages.map { pkg ->
+                // Check if vulnerability is ignored via comment in build file
+                if (vulnerabilityIgnoreService.isPackageVulnerabilityIgnored(pkg)) {
+                    return@map pkg // Keep as-is (no vulnerability info)
+                }
+
+                val vulns = results["${pkg.publisher}:${pkg.name}"]
+                if (!vulns.isNullOrEmpty()) {
+                    val severityScore = { v: com.maddrobot.plugins.udm.gradle.manager.model.VulnerabilityInfo ->
+                        when (v.severity) {
+                            com.maddrobot.plugins.udm.gradle.manager.model.VulnerabilitySeverity.CRITICAL -> 4
+                            com.maddrobot.plugins.udm.gradle.manager.model.VulnerabilitySeverity.HIGH -> 3
+                            com.maddrobot.plugins.udm.gradle.manager.model.VulnerabilitySeverity.MEDIUM -> 2
+                            com.maddrobot.plugins.udm.gradle.manager.model.VulnerabilitySeverity.LOW -> 1
+                            else -> 0
+                        }
+                    }
+                    // Prefer vulnerabilities with fix versions (so the UI can suggest the fix)
+                    val withFix = vulns.filter { it.fixedVersion != null }
+                    val bestVuln = if (withFix.isNotEmpty()) {
+                        withFix.maxByOrNull(severityScore)
+                    } else {
+                        vulns.maxByOrNull(severityScore)
+                    }
+                    pkg.copy(vulnerabilityInfo = bestVuln)
+                } else {
+                    pkg
+                }
+            }
+
+            listPanel.setPackages(updatedPackages)
+        }
+    }
+
+    /**
+     * Handle the "Ignore Vulnerability" action from the details panel.
+     * Shows a confirmation dialog, then inserts the ignore comment in the build file.
+     */
+    private fun handleIgnoreVulnerability(pkg: UnifiedPackage, vulnInfo: com.maddrobot.plugins.udm.gradle.manager.model.VulnerabilityInfo) {
+        val dialog = VulnerabilityIgnoreDialog(project, pkg, vulnInfo)
+        if (dialog.showAndGet()) {
+            val reason = dialog.reason
+            val success = vulnerabilityIgnoreService.ignoreVulnerability(pkg, vulnInfo, reason)
+            if (success) {
+                uiLog.info("Ignored vulnerability ${vulnInfo.cveId ?: "unknown"} for ${pkg.id}: $reason", "Vulnerability")
+
+                // Remove the vulnerability from the package in the list and refresh the details panel
+                val updatedPkg = pkg.copy(vulnerabilityInfo = null)
+                listPanel.updatePackage(updatedPkg)
+                detailsPanel.setPackage(updatedPkg)
+            } else {
+                uiLog.error("Failed to ignore vulnerability for ${pkg.id}", "Vulnerability")
+            }
+        }
     }
 
     private fun performSearch(query: String) {
@@ -1333,6 +1481,27 @@ class UnifiedDependencyPanel(
         return packages.distinctBy { it.id }
     }
 
+    /**
+     * Conditionally show preview diff or apply changes immediately based on user settings.
+     */
+    private fun applyWithOptionalPreview(
+        filePath: String,
+        originalContent: String,
+        newContent: String,
+        commandName: String,
+        applyAction: () -> Unit
+    ) {
+        val showPreview = PackageFinderSetting.instance.showPreviewBeforeChanges
+        if (showPreview) {
+            val dialog = PreviewDiffDialog(project, filePath, originalContent, newContent)
+            if (dialog.showAndGet()) {
+                applyAction()
+            }
+        } else {
+            applyAction()
+        }
+    }
+
     private fun performInstall(pkg: UnifiedPackage, version: String, module: String, configuration: String, sourceRepoUrl: String? = null) {
         // Log which repository is being used
         if (sourceRepoUrl != null) {
@@ -1375,14 +1544,11 @@ class UnifiedDependencyPanel(
             val virtualFile = LocalFileSystem.getInstance().findFileByPath(buildFile)
             val originalContent = virtualFile?.let { FileDocumentManager.getInstance().getDocument(it)?.text } ?: ""
 
-            uiLog.info("Gradle Install: Showing preview diff dialog", "Install")
-            val dialog = PreviewDiffDialog(project, buildFile, originalContent, newContent)
-            if (dialog.showAndGet()) {
-                uiLog.info("Gradle Install: Applying changes to $buildFile", "Install")
+            uiLog.info("Gradle Install: Applying changes to $buildFile", "Install")
+            applyWithOptionalPreview(buildFile, originalContent, newContent, "Add Dependency: ${pkg.id}") {
                 gradleModifier.applyChanges(buildFile, newContent, "Add Dependency: ${pkg.id}")
+                refresh()
                 uiLog.info("Gradle Install: Successfully added ${pkg.id}:$version to $module", "Install")
-            } else {
-                uiLog.info("Gradle Install: User cancelled the preview dialog", "Install")
             }
         } else {
             uiLog.error("Gradle Install: Failed to generate new build file content", "Install")
@@ -1420,15 +1586,11 @@ class UnifiedDependencyPanel(
             val virtualFile = LocalFileSystem.getInstance().findFileByPath(pomFile)
             val originalContent = virtualFile?.let { FileDocumentManager.getInstance().getDocument(it)?.text } ?: ""
 
-            uiLog.info("Maven Install: Showing preview diff dialog", "Install")
-            val dialog = PreviewDiffDialog(project, pomFile, originalContent, newContent)
-            if (dialog.showAndGet()) {
-                uiLog.info("Maven Install: Applying changes to $pomFile", "Install")
+            uiLog.info("Maven Install: Applying changes to $pomFile", "Install")
+            applyWithOptionalPreview(pomFile, originalContent, newContent, "Add Dependency: ${pkg.id}") {
                 mavenModifier.applyChanges(pomFile, newContent, "Add Dependency: ${pkg.id}")
-                refreshMavenDependencies()
+                refresh()
                 uiLog.info("Maven Install: Successfully added ${pkg.id}:$version to $module", "Install")
-            } else {
-                uiLog.info("Maven Install: User cancelled the preview dialog", "Install")
             }
         } else {
             uiLog.error("Maven Install: Failed to generate new pom.xml content", "Install")
@@ -1450,11 +1612,16 @@ class UnifiedDependencyPanel(
 
     private fun performUpdate(pkg: UnifiedPackage, newVersion: String) {
         val metadata = pkg.metadata
+        uiLog.info("Update: ${pkg.id} to version $newVersion, metadata type: ${metadata::class.simpleName}", "Update")
 
         when (metadata) {
             is PackageMetadata.GradleMetadata -> performGradleUpdate(pkg, newVersion)
             is PackageMetadata.MavenInstalledMetadata -> performMavenUpdate(pkg, newVersion)
-            else -> log.warn("Cannot update package with metadata type: ${metadata::class.simpleName}")
+            is PackageMetadata.GradlePluginMetadata -> performGradlePluginUpdate(pkg, metadata, newVersion)
+            is PackageMetadata.MavenPluginMetadata -> performMavenPluginUpdate(pkg, metadata, newVersion)
+            else -> {
+                uiLog.warn("Update: Cannot update package with metadata type: ${metadata::class.simpleName}", "Update")
+            }
         }
     }
 
@@ -1470,9 +1637,9 @@ class UnifiedDependencyPanel(
             val originalContent = document.text
             val newContent = gradleModifier.getUpdatedContent(installed, newVersion)
             if (newContent != null) {
-                val dialog = PreviewDiffDialog(project, installed.buildFile, originalContent, newContent)
-                if (dialog.showAndGet()) {
+                applyWithOptionalPreview(installed.buildFile, originalContent, newContent, "Update Dependency: ${pkg.id}") {
                     gradleModifier.applyChanges(installed, newContent, "Update Dependency: ${pkg.id}")
+                    refresh()
                 }
             }
         }
@@ -1490,11 +1657,72 @@ class UnifiedDependencyPanel(
             val originalContent = document.text
             val newContent = mavenModifier.getUpdatedContent(installed, newVersion)
             if (newContent != null) {
-                val dialog = PreviewDiffDialog(project, installed.pomFile, originalContent, newContent)
-                if (dialog.showAndGet()) {
+                applyWithOptionalPreview(installed.pomFile, originalContent, newContent, "Update Dependency: ${pkg.id}") {
                     mavenModifier.applyChanges(installed, newContent, "Update Dependency: ${pkg.id}")
-                    refreshMavenDependencies()
+                    refresh()
                 }
+            }
+        }
+    }
+
+    private fun performGradlePluginUpdate(pkg: UnifiedPackage, metadata: PackageMetadata.GradlePluginMetadata, newVersion: String) {
+        // Reconstruct InstalledPlugin from metadata
+        val installedPlugin = InstalledPlugin(
+            pluginId = pkg.name,
+            version = pkg.installedVersion,
+            moduleName = pkg.modules.firstOrNull() ?: "root",
+            buildFile = metadata.buildFile,
+            offset = metadata.offset,
+            length = metadata.length,
+            pluginSyntax = metadata.pluginSyntax,
+            isKotlinShorthand = metadata.isKotlinShorthand,
+            isApplied = metadata.isApplied
+        )
+
+        val virtualFile = LocalFileSystem.getInstance().findFileByPath(metadata.buildFile)
+        val document = virtualFile?.let { FileDocumentManager.getInstance().getDocument(it) }
+        if (document != null) {
+            val originalContent = document.text
+            val newContent = gradlePluginModifier.getUpdatedContent(installedPlugin, newVersion)
+            if (newContent != null) {
+                applyWithOptionalPreview(metadata.buildFile, originalContent, newContent, "Update Plugin: ${pkg.id}") {
+                    gradlePluginModifier.applyChanges(metadata.buildFile, newContent, "Update Plugin: ${pkg.id}")
+                    refresh()
+                }
+            } else {
+                uiLog.warn("Update: Could not generate updated content for plugin ${pkg.id}", "Update")
+            }
+        }
+    }
+
+    private fun performMavenPluginUpdate(pkg: UnifiedPackage, metadata: PackageMetadata.MavenPluginMetadata, newVersion: String) {
+        // Reconstruct MavenInstalledPlugin from metadata
+        val installedPlugin = MavenInstalledPlugin(
+            groupId = pkg.publisher,
+            artifactId = pkg.name,
+            version = pkg.installedVersion,
+            moduleName = pkg.modules.firstOrNull() ?: "root",
+            pomFile = metadata.pomFile,
+            offset = metadata.offset,
+            length = metadata.length,
+            phase = metadata.phase,
+            goals = metadata.goals,
+            inherited = metadata.inherited,
+            isFromPluginManagement = metadata.isFromPluginManagement
+        )
+
+        val virtualFile = LocalFileSystem.getInstance().findFileByPath(metadata.pomFile)
+        val document = virtualFile?.let { FileDocumentManager.getInstance().getDocument(it) }
+        if (document != null) {
+            val originalContent = document.text
+            val newContent = mavenPluginModifier.getUpdatedContent(installedPlugin, newVersion)
+            if (newContent != null) {
+                applyWithOptionalPreview(metadata.pomFile, originalContent, newContent, "Update Plugin: ${pkg.id}") {
+                    mavenPluginModifier.applyChanges(installedPlugin, newContent, "Update Plugin: ${pkg.id}")
+                    refresh()
+                }
+            } else {
+                uiLog.warn("Update: Could not generate updated content for Maven plugin ${pkg.id}", "Update")
             }
         }
     }
@@ -1566,14 +1794,11 @@ class UnifiedDependencyPanel(
             return
         }
 
-        uiLog.info("Gradle Uninstall: Showing preview diff dialog", "Uninstall")
-        val dialog = PreviewDiffDialog(project, installed.buildFile, originalContent, newContent)
-        if (dialog.showAndGet()) {
-            uiLog.info("Gradle Uninstall: Applying changes to ${installed.buildFile}", "Uninstall")
+        uiLog.info("Gradle Uninstall: Applying changes to ${installed.buildFile}", "Uninstall")
+        applyWithOptionalPreview(installed.buildFile, originalContent, newContent, "Remove Dependency: ${pkg.id}") {
             gradleModifier.applyChanges(installed, newContent, "Remove Dependency: ${pkg.id}")
+            refresh()
             uiLog.info("Gradle Uninstall: Successfully removed ${pkg.id}", "Uninstall")
-        } else {
-            uiLog.info("Gradle Uninstall: User cancelled the preview dialog", "Uninstall")
         }
     }
 
@@ -1635,15 +1860,11 @@ class UnifiedDependencyPanel(
             return
         }
 
-        uiLog.info("Maven Uninstall: Showing preview diff dialog", "Uninstall")
-        val dialog = PreviewDiffDialog(project, installed.pomFile, originalContent, newContent)
-        if (dialog.showAndGet()) {
-            uiLog.info("Maven Uninstall: Applying changes to ${installed.pomFile}", "Uninstall")
+        uiLog.info("Maven Uninstall: Applying changes to ${installed.pomFile}", "Uninstall")
+        applyWithOptionalPreview(installed.pomFile, originalContent, newContent, "Remove Dependency: ${pkg.id}") {
             mavenModifier.applyChanges(installed, newContent, "Remove Dependency: ${pkg.id}")
-            refreshMavenDependencies()
+            refresh()
             uiLog.info("Maven Uninstall: Successfully removed ${pkg.id}", "Uninstall")
-        } else {
-            uiLog.info("Maven Uninstall: User cancelled the preview dialog", "Uninstall")
         }
     }
 
@@ -2044,5 +2265,168 @@ class UnifiedDependencyPanel(
 
         // Show bulk upgrade dialog
         showBulkUpgradeDialog()
+    }
+
+    /**
+     * Show Maven plugin configuration dialog.
+     * Downloads plugin descriptor asynchronously, then shows the config editor.
+     */
+    private fun showMavenPluginConfigDialog(pkg: UnifiedPackage) {
+        val metadata = pkg.metadata as? PackageMetadata.MavenPluginMetadata ?: return
+
+        uiLog.info("Configure: Loading Maven plugin descriptor for ${pkg.id}", "Configure")
+
+        // Fetch plugin descriptor on a pooled thread
+        ApplicationManager.getApplication().executeOnPooledThread {
+            val descriptorService = PluginDescriptorService.getInstance(project)
+            var version = pkg.installedVersion
+
+            // Resolve property-based versions (e.g., "${maven-compiler-plugin.version}")
+            if (version != null && version.contains("\${")) {
+                uiLog.info("Configure: Resolving property-based version '$version' from ${metadata.pomFile}", "Configure")
+                version = mavenPluginScanner.resolveVersionFromPom(version, metadata.pomFile)
+                if (version != null) {
+                    uiLog.info("Configure: Resolved version to '$version'", "Configure")
+                } else {
+                    uiLog.warn("Configure: Could not resolve version property for ${pkg.id}", "Configure")
+                }
+            }
+
+            val descriptor = if (version != null) {
+                descriptorService.getPluginDescriptor(pkg.publisher, pkg.name, version)
+            } else {
+                null
+            }
+
+            ApplicationManager.getApplication().invokeLater {
+                if (descriptor != null) {
+                    uiLog.info("Configure: Loaded descriptor with ${descriptor.mojos.size} goals", "Configure")
+                } else {
+                    uiLog.warn("Configure: Could not load plugin descriptor for ${pkg.id}", "Configure")
+                }
+
+                val dialog = MavenPluginConfigDialog(
+                    project,
+                    descriptor,
+                    metadata.configuration,
+                    pkg.id
+                )
+
+                if (dialog.showAndGet()) {
+                    val newConfig = dialog.resultConfiguration
+                    uiLog.info("Configure: Applying ${newConfig.size} configuration properties to ${pkg.id}", "Configure")
+                    performMavenPluginConfigure(pkg, metadata, newConfig)
+                }
+            }
+        }
+    }
+
+    /**
+     * Apply Maven plugin configuration changes.
+     */
+    private fun performMavenPluginConfigure(
+        pkg: UnifiedPackage,
+        metadata: PackageMetadata.MavenPluginMetadata,
+        configuration: Map<String, String>
+    ) {
+        val installedPlugin = MavenInstalledPlugin(
+            groupId = pkg.publisher,
+            artifactId = pkg.name,
+            version = pkg.installedVersion,
+            moduleName = pkg.modules.firstOrNull() ?: "root",
+            pomFile = metadata.pomFile,
+            offset = metadata.offset,
+            length = metadata.length,
+            phase = metadata.phase,
+            goals = metadata.goals,
+            inherited = metadata.inherited,
+            isFromPluginManagement = metadata.isFromPluginManagement,
+            configuration = metadata.configuration
+        )
+
+        val originalContent = mavenPluginModifier.getOriginalContent(metadata.pomFile) ?: return
+        val newContent = mavenPluginModifier.getConfiguredContent(installedPlugin, configuration)
+        if (newContent != null) {
+            applyWithOptionalPreview(metadata.pomFile, originalContent, newContent, "Configure Plugin: ${pkg.id}") {
+                mavenPluginModifier.applyChanges(installedPlugin, newContent, "Configure Plugin: ${pkg.id}")
+                refresh()
+                uiLog.info("Configure: Successfully applied Maven plugin configuration for ${pkg.id}", "Configure")
+            }
+        } else {
+            uiLog.error("Configure: Failed to generate configured pom.xml content for ${pkg.id}", "Configure")
+        }
+    }
+
+    /**
+     * Show Gradle plugin configuration dialog.
+     * Scans for existing extension block, then shows the config editor.
+     */
+    private fun showGradlePluginConfigDialog(pkg: UnifiedPackage) {
+        val metadata = pkg.metadata as? PackageMetadata.GradlePluginMetadata ?: return
+
+        val extensionName = KnownPluginExtensions.getExtensionName(pkg.name)
+
+        // Scan for existing configuration if we know the extension name
+        val existingConfig = if (extensionName != null) {
+            gradlePluginScanner.scanPluginConfiguration(metadata.buildFile, extensionName)
+        } else {
+            null
+        }
+
+        val isKotlinDsl = metadata.buildFile.endsWith(".kts")
+
+        val dialog = GradlePluginConfigDialog(
+            project,
+            pkg.name,
+            extensionName ?: existingConfig?.extensionName,
+            existingConfig,
+            isKotlinDsl
+        )
+
+        if (dialog.showAndGet()) {
+            uiLog.info("Configure: Applying Gradle plugin configuration for ${pkg.id}", "Configure")
+            performGradlePluginConfigure(pkg, metadata, dialog)
+        }
+    }
+
+    /**
+     * Apply Gradle plugin configuration changes.
+     */
+    private fun performGradlePluginConfigure(
+        pkg: UnifiedPackage,
+        metadata: PackageMetadata.GradlePluginMetadata,
+        dialog: GradlePluginConfigDialog
+    ) {
+        val extensionName = dialog.extensionName
+        val originalContent = gradlePluginModifier.getOriginalContent(metadata.buildFile) ?: return
+
+        // Scan for existing config to get offset/length for in-place replacement
+        val existingConfig = gradlePluginScanner.scanPluginConfiguration(metadata.buildFile, extensionName)
+
+        val newContent = if (dialog.isRawEditorMode) {
+            gradlePluginModifier.getConfiguredContentFromRaw(
+                metadata.buildFile,
+                extensionName,
+                dialog.rawBlockContent,
+                existingConfig
+            )
+        } else {
+            gradlePluginModifier.getConfiguredContent(
+                metadata.buildFile,
+                extensionName,
+                dialog.resultProperties,
+                existingConfig
+            )
+        }
+
+        if (newContent != null) {
+            applyWithOptionalPreview(metadata.buildFile, originalContent, newContent, "Configure Plugin: ${pkg.id}") {
+                gradlePluginModifier.applyChanges(metadata.buildFile, newContent, "Configure Plugin: ${pkg.id}")
+                refresh()
+                uiLog.info("Configure: Successfully applied Gradle plugin configuration for ${pkg.id}", "Configure")
+            }
+        } else {
+            uiLog.error("Configure: Failed to generate configured build file content for ${pkg.id}", "Configure")
+        }
     }
 }

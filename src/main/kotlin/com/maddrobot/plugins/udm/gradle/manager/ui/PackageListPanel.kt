@@ -46,12 +46,15 @@ class PackageListPanel(
     }
 
     /**
-     * Section types for grouping packages
+     * Section types for grouping packages.
+     * Order matters: sections are displayed in enum order.
      */
     enum class SectionType {
-        INSTALLED,      // Directly installed packages
-        TRANSITIVE,     // Implicitly installed (transitive) dependencies
+        VULNERABLE,     // Packages with security vulnerabilities (highest priority)
         UPDATES,        // Packages with available updates
+        INSTALLED,      // Directly installed packages
+        PLUGINS,        // Gradle and Maven plugins
+        TRANSITIVE,     // Implicitly installed (transitive) dependencies
         AVAILABLE       // Search results / available packages
     }
 
@@ -383,6 +386,16 @@ class PackageListPanel(
     }
 
     /**
+     * Update a single package in the list (e.g., after ignoring a vulnerability).
+     */
+    fun updatePackage(updatedPkg: UnifiedPackage) {
+        allPackages = allPackages.map { pkg ->
+            if (pkg.id == updatedPkg.id) updatedPkg else pkg
+        }
+        applyFilters()
+    }
+
+    /**
      * Clear all packages.
      */
     fun clearPackages() {
@@ -428,7 +441,8 @@ class PackageListPanel(
 
     /**
      * Build the list model with section headers and package items.
-     * Uses a unified view showing all sections: Installed, Transitive, and Available.
+     * Uses a unified view showing all sections in priority order:
+     * Vulnerable > Updates > Installed > Plugins > Transitive > Available.
      * Respects the collapsed state of each section.
      */
     @Suppress("DEPRECATION")
@@ -438,12 +452,46 @@ class PackageListPanel(
         // Unified view: Always show all relevant sections
 
         // 1. Separate packages into categories
-        val installedDirect = packages.filter { it.isInstalled && !it.isTransitive }
-        val installedTransitive = packages.filter { it.isInstalled && it.isTransitive }
-        val withUpdates = packages.filter { it.isInstalled && it.hasUpdate }
+        val vulnerable = packages.filter { it.isInstalled && it.isVulnerable }
+        val withUpdates = packages.filter { it.isInstalled && it.hasUpdate && !it.isVulnerable }
+        val installedDirect = packages.filter { it.isInstalled && !it.isTransitive && !it.isVulnerable && !it.hasUpdate && !isPlugin(it) }
+        val plugins = packages.filter { it.isInstalled && isPlugin(it) && !it.isVulnerable && !it.hasUpdate }
+        val installedTransitive = packages.filter { it.isInstalled && it.isTransitive && !it.isVulnerable }
         val available = packages.filter { !it.isInstalled }
 
-        // 2. Add "Installed Packages" section (direct dependencies)
+        // 2. Add "Vulnerable" section (highest priority - security issues)
+        if (vulnerable.isNotEmpty()) {
+            val isCollapsed = collapsedSections.contains(SectionType.VULNERABLE)
+            listModel.addElement(ListItem.SectionHeader(
+                title = message("unified.list.section.vulnerable"),
+                count = vulnerable.size,
+                sectionType = SectionType.VULNERABLE,
+                isCollapsed = isCollapsed
+            ))
+            if (!isCollapsed) {
+                vulnerable.forEach { pkg ->
+                    listModel.addElement(ListItem.PackageItem(pkg))
+                }
+            }
+        }
+
+        // 3. Add "Updates Available" section
+        if (withUpdates.isNotEmpty()) {
+            val isCollapsed = collapsedSections.contains(SectionType.UPDATES)
+            listModel.addElement(ListItem.SectionHeader(
+                title = message("unified.list.section.updates"),
+                count = withUpdates.size,
+                sectionType = SectionType.UPDATES,
+                isCollapsed = isCollapsed
+            ))
+            if (!isCollapsed) {
+                withUpdates.forEach { pkg ->
+                    listModel.addElement(ListItem.PackageItem(pkg))
+                }
+            }
+        }
+
+        // 4. Add "Installed Packages" section (direct dependencies)
         if (installedDirect.isNotEmpty()) {
             val isCollapsed = collapsedSections.contains(SectionType.INSTALLED)
             listModel.addElement(ListItem.SectionHeader(
@@ -459,7 +507,23 @@ class PackageListPanel(
             }
         }
 
-        // 3. Add "Implicit (Transitive Packages)" section
+        // 5. Add "Plugins" section (Gradle and Maven plugins)
+        if (plugins.isNotEmpty()) {
+            val isCollapsed = collapsedSections.contains(SectionType.PLUGINS)
+            listModel.addElement(ListItem.SectionHeader(
+                title = message("unified.list.section.plugins"),
+                count = plugins.size,
+                sectionType = SectionType.PLUGINS,
+                isCollapsed = isCollapsed
+            ))
+            if (!isCollapsed) {
+                plugins.forEach { pkg ->
+                    listModel.addElement(ListItem.PackageItem(pkg))
+                }
+            }
+        }
+
+        // 6. Add "Implicit (Transitive Packages)" section
         if (installedTransitive.isNotEmpty()) {
             val isCollapsed = collapsedSections.contains(SectionType.TRANSITIVE)
             listModel.addElement(ListItem.SectionHeader(
@@ -476,7 +540,7 @@ class PackageListPanel(
             }
         }
 
-        // 4. Add "Available Packages" section (search results / not installed)
+        // 7. Add "Available Packages" section (search results / not installed)
         if (available.isNotEmpty()) {
             val isCollapsed = collapsedSections.contains(SectionType.AVAILABLE)
             listModel.addElement(ListItem.SectionHeader(
@@ -491,6 +555,15 @@ class PackageListPanel(
                 }
             }
         }
+    }
+
+    /**
+     * Check if a package is a plugin (Gradle or Maven plugin).
+     */
+    private fun isPlugin(pkg: UnifiedPackage): Boolean {
+        return pkg.source == com.maddrobot.plugins.udm.gradle.manager.model.PackageSource.GRADLE_PLUGIN_INSTALLED ||
+            pkg.source == com.maddrobot.plugins.udm.gradle.manager.model.PackageSource.MAVEN_PLUGIN_INSTALLED ||
+            pkg.scope == "plugin"
     }
 
     /**

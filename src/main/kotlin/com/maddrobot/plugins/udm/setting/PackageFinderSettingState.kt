@@ -13,5 +13,15 @@ data class PackageFinderSettingState(
     var nexusServerUrl: String = "",
     var repoSource: MavenRepositorySource = MavenRepositorySource.CENTRAL,
     var dependencyScope: DependencyScope = DependencyScope.COMPILE,
-    var dependencyFormat: DependencyFormat = DependencyFormat.GradleGroovyDeclaration
-)
+    var dependencyFormat: DependencyFormat = DependencyFormat.GradleGroovyDeclaration,
+    // Vulnerability scanning settings
+    var enableVulnerabilityScanning: Boolean = true,
+    var vulnerabilityScanOnLoad: Boolean = true,
+    var githubToken: String? = null,  // Optional token for GitHub Advisory Database
+    // General settings
+    var showPreviewBeforeChanges: Boolean = false  // When true, shows diff preview before install/update/uninstall
+) {
+    companion object {
+        fun getInstance(): PackageFinderSettingState = PackageFinderSetting.instance.state
+    }
+}

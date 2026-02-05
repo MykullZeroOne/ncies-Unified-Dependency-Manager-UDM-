@@ -3,6 +3,7 @@ package com.maddrobot.plugins.udm.setting
 import com.intellij.openapi.options.BoundConfigurable
 import com.intellij.openapi.ui.DialogPanel
 import com.intellij.ui.dsl.builder.bindItem
+import com.intellij.ui.dsl.builder.bindSelected
 import com.intellij.ui.dsl.builder.bindText
 import com.intellij.ui.dsl.builder.panel
 import com.maddrobot.plugins.udm.PackageFinderBundle.message
@@ -24,6 +25,17 @@ class PackageFinderSettingWindow : BoundConfigurable(
 
     override fun createPanel(): DialogPanel {
         return panel {
+            group(message("settings.general.group.title")) {
+                row {
+                    checkBox(message("settings.general.showPreview"))
+                        .bindSelected(
+                            getter = { setting.showPreviewBeforeChanges },
+                            setter = { setting.showPreviewBeforeChanges = it }
+                        )
+                        .comment(message("settings.general.showPreview.tooltip"))
+                }
+            }
+
             group(message("settings.maven.group.title")) {
                 row(message("settings.maven.repoSource")) {
                     comboBox(MavenRepositorySource.entries, PackageFinderListCellRenderer)

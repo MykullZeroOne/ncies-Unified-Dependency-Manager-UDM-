@@ -61,6 +61,35 @@ class PackageFinderSetting : PersistentStateComponent<PackageFinderSettingState>
             log.info("Nexus server url updated to $value")
         }
 
+    var enableVulnerabilityScanning: Boolean
+        get() = myState.enableVulnerabilityScanning
+        set(value) {
+            myState.enableVulnerabilityScanning = value
+            log.info("Vulnerability scanning enabled: $value")
+            ApplicationManager.getApplication().messageBus.syncPublisher(SettingsChangedListener.TOPIC).onSettingsChanged()
+        }
+
+    var vulnerabilityScanOnLoad: Boolean
+        get() = myState.vulnerabilityScanOnLoad
+        set(value) {
+            myState.vulnerabilityScanOnLoad = value
+            log.info("Vulnerability scan on load: $value")
+        }
+
+    var githubToken: String?
+        get() = myState.githubToken
+        set(value) {
+            myState.githubToken = value
+            log.info("GitHub token updated")
+        }
+
+    var showPreviewBeforeChanges: Boolean
+        get() = myState.showPreviewBeforeChanges
+        set(value) {
+            myState.showPreviewBeforeChanges = value
+            log.info("Show preview before changes: $value")
+        }
+
     override fun getState(): PackageFinderSettingState {
         log.info("getState() called, returning myState = $myState")
         return myState

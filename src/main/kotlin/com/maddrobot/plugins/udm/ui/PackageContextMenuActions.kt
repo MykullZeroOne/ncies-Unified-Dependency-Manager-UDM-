@@ -9,6 +9,7 @@ import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.project.Project
 import com.maddrobot.plugins.udm.gradle.manager.model.UnifiedPackage
 import com.maddrobot.plugins.udm.gradle.manager.model.PackageSource
+import com.maddrobot.plugins.udm.gradle.manager.model.VulnerabilityInfo
 import java.awt.datatransfer.StringSelection
 
 /**
@@ -498,6 +499,47 @@ class UpgradeSelectedAction(
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
 }
 
+// ========== Vulnerability Actions ==========
+
+/**
+ * Action to view the security advisory for a vulnerable package.
+ */
+class ViewAdvisoryAction(
+    cveLabel: String,
+    severityLabel: String,
+    private val vulnInfo: VulnerabilityInfo,
+    private val onViewAdvisory: (VulnerabilityInfo) -> Unit
+) : DumbAwareAction(
+    "View Advisory: $cveLabel ($severityLabel)",
+    "Open the security advisory in your browser",
+    AllIcons.General.Warning
+) {
+    override fun actionPerformed(e: AnActionEvent) {
+        onViewAdvisory(vulnInfo)
+    }
+
+    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+}
+
+/**
+ * Action to update a package to the version that fixes a vulnerability.
+ */
+class UpdateToFixAction(
+    private val fixVersion: String,
+    private val pkg: UnifiedPackage,
+    private val onUpgrade: (UnifiedPackage, String?) -> Unit
+) : DumbAwareAction(
+    "Update to Fix ($fixVersion)",
+    "Update this package to the version that fixes the vulnerability",
+    AllIcons.Actions.Execute
+) {
+    override fun actionPerformed(e: AnActionEvent) {
+        onUpgrade(pkg, fixVersion)
+    }
+
+    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+}
+
 // ========== Helper Functions ==========
 
 private fun copyToClipboard(text: String) {
@@ -549,6 +591,20 @@ object PackageContextMenuBuilder {
                 group.add(removeGroup)
             } else {
                 group.add(RemoveFromAllModulesAction(callbacks.onRemoveFromAll))
+            }
+        }
+
+        // Vulnerability Actions
+        val vulnInfo = selectedPackage.vulnerabilityInfo
+        if (vulnInfo != null) {
+            group.addSeparator("Vulnerability")
+            val cveLabel = vulnInfo.cveId ?: "Unknown"
+            val severityLabel = vulnInfo.severity.name
+            group.add(ViewAdvisoryAction(cveLabel, severityLabel, vulnInfo, callbacks.onViewAdvisory))
+
+            // "Update to Fix" if a fix version is available
+            if (vulnInfo.fixedVersion != null && selectedPackage.isInstalled) {
+                group.add(UpdateToFixAction(vulnInfo.fixedVersion, selectedPackage, callbacks.onUpgrade))
             }
         }
 
@@ -607,6 +663,7 @@ object PackageContextMenuBuilder {
         val onShowDependents: (UnifiedPackage) -> Unit = {},
         val onWhyInstalled: (UnifiedPackage) -> Unit = {},
         val onRemoveSelected: (List<UnifiedPackage>) -> Unit = {},
-        val onUpgradeSelected: (List<UnifiedPackage>) -> Unit = {}
+        val onUpgradeSelected: (List<UnifiedPackage>) -> Unit = {},
+        val onViewAdvisory: (VulnerabilityInfo) -> Unit = {}
     )
 }

@@ -2,9 +2,14 @@ package com.maddrobot.plugins.udm.gradle.manager.model
 
 import com.maddrobot.plugins.udm.gradle.manager.DependencyUpdate
 import com.maddrobot.plugins.udm.gradle.manager.InstalledDependency
+import com.maddrobot.plugins.udm.gradle.manager.InstalledPlugin
+import com.maddrobot.plugins.udm.gradle.manager.PluginSyntax
+import com.maddrobot.plugins.udm.gradle.manager.PluginUpdate
 import com.maddrobot.plugins.udm.maven.CentralDependency
 import com.maddrobot.plugins.udm.maven.Dependency
 import com.maddrobot.plugins.udm.maven.manager.MavenInstalledDependency
+import com.maddrobot.plugins.udm.maven.manager.MavenInstalledPlugin
+import com.maddrobot.plugins.udm.maven.manager.MavenPluginUpdate
 import com.maddrobot.plugins.udm.npm.NpmObject
 
 /**
@@ -125,13 +130,15 @@ data class UnifiedPackage(
  * Identifies the source/type of the package.
  */
 enum class PackageSource {
-    GRADLE_INSTALLED,   // Installed via Gradle
-    MAVEN_INSTALLED,    // Installed via Maven (pom.xml)
-    MAVEN_CENTRAL,      // Search result from Maven Central
-    NPM,                // Search result from NPM Registry
-    NEXUS,              // Search result from Nexus
-    LOCAL_MAVEN,        // From local Maven repository
-    GRADLE_PLUGIN       // Gradle plugin from Plugin Portal
+    GRADLE_INSTALLED,           // Installed via Gradle
+    MAVEN_INSTALLED,            // Installed via Maven (pom.xml)
+    MAVEN_CENTRAL,              // Search result from Maven Central
+    NPM,                        // Search result from NPM Registry
+    NEXUS,                      // Search result from Nexus
+    LOCAL_MAVEN,                // From local Maven repository
+    GRADLE_PLUGIN,              // Gradle plugin from Plugin Portal (search result)
+    GRADLE_PLUGIN_INSTALLED,    // Installed Gradle plugin (from plugins {} block)
+    MAVEN_PLUGIN_INSTALLED      // Installed Maven plugin (from pom.xml build/plugins)
 }
 
 /**
@@ -194,6 +201,32 @@ sealed class PackageMetadata {
      * Empty metadata for packages with no additional info.
      */
     data object Empty : PackageMetadata()
+
+    /**
+     * Metadata for installed Gradle plugins (from plugins {} block).
+     */
+    data class GradlePluginMetadata(
+        val buildFile: String,
+        val offset: Int,
+        val length: Int,
+        val pluginSyntax: PluginSyntax,
+        val isKotlinShorthand: Boolean,
+        val isApplied: Boolean
+    ) : PackageMetadata()
+
+    /**
+     * Metadata for installed Maven plugins (from pom.xml build/plugins).
+     */
+    data class MavenPluginMetadata(
+        val pomFile: String,
+        val offset: Int,
+        val length: Int,
+        val phase: String?,
+        val goals: List<String>,
+        val inherited: Boolean,
+        val isFromPluginManagement: Boolean,
+        val configuration: Map<String, String> = emptyMap()
+    ) : PackageMetadata()
 }
 
 /**
@@ -452,5 +485,165 @@ object PackageAdapters {
                 optional = installed.optional
             )
         )
+    }
+
+    /**
+     * Convert an installed Gradle plugin to a UnifiedPackage.
+     * @param plugin The installed plugin
+     * @param update Optional update information if an update is available
+     */
+    fun fromInstalledPlugin(plugin: InstalledPlugin, update: PluginUpdate? = null): UnifiedPackage {
+        // For plugins, we use pluginId as 'name' and extract group from pluginId if possible
+        val parts = plugin.pluginId.split(".")
+        val publisher = if (parts.size > 2) parts.dropLast(1).joinToString(".") else plugin.pluginId
+        val name = if (parts.size > 2) parts.last() else plugin.pluginId
+
+        return UnifiedPackage(
+            name = plugin.pluginId,  // Use full pluginId as name for clarity
+            publisher = publisher,
+            installedVersion = plugin.version,
+            latestVersion = update?.latestVersion,
+            description = null,
+            homepage = "https://plugins.gradle.org/plugin/${plugin.pluginId}",
+            license = null,
+            scope = "plugin",
+            modules = listOf(plugin.moduleName),
+            source = PackageSource.GRADLE_PLUGIN_INSTALLED,
+            metadata = PackageMetadata.GradlePluginMetadata(
+                buildFile = plugin.buildFile,
+                offset = plugin.offset,
+                length = plugin.length,
+                pluginSyntax = plugin.pluginSyntax,
+                isKotlinShorthand = plugin.isKotlinShorthand,
+                isApplied = plugin.isApplied
+            )
+        )
+    }
+
+    /**
+     * Convert an installed Maven plugin to a UnifiedPackage.
+     * @param plugin The installed Maven plugin
+     * @param update Optional update information if an update is available
+     */
+    fun fromMavenInstalledPlugin(plugin: MavenInstalledPlugin, update: MavenPluginUpdate? = null): UnifiedPackage {
+        val homepage = when {
+            plugin.groupId.startsWith("org.apache.maven.plugins") ->
+                "https://maven.apache.org/plugins/${plugin.artifactId}/"
+            else ->
+                "https://search.maven.org/artifact/${plugin.groupId}/${plugin.artifactId}"
+        }
+        return UnifiedPackage(
+            name = plugin.artifactId,
+            publisher = plugin.groupId,
+            installedVersion = plugin.version,
+            latestVersion = update?.latestVersion,
+            description = null,
+            homepage = homepage,
+            license = null,
+            scope = "plugin",
+            modules = listOf(plugin.moduleName),
+            source = PackageSource.MAVEN_PLUGIN_INSTALLED,
+            metadata = PackageMetadata.MavenPluginMetadata(
+                pomFile = plugin.pomFile,
+                offset = plugin.offset,
+                length = plugin.length,
+                phase = plugin.phase,
+                goals = plugin.goals,
+                inherited = plugin.inherited,
+                isFromPluginManagement = plugin.isFromPluginManagement,
+                configuration = plugin.configuration
+            )
+        )
+    }
+
+    /**
+     * Group installed Gradle plugins by their ID and aggregate modules.
+     * This handles cases where the same plugin is used in multiple modules.
+     */
+    fun aggregatePluginsByPackage(
+        plugins: List<InstalledPlugin>,
+        updates: List<PluginUpdate>
+    ): List<UnifiedPackage> {
+        val updateMap = updates.associateBy { it.installed.pluginId }
+
+        return plugins
+            .groupBy { it.pluginId }
+            .map { (pluginId, pluginList) ->
+                val firstPlugin = pluginList.first()
+                val update = updateMap[pluginId]
+                val modules = pluginList.map { it.moduleName }.distinct()
+
+                val parts = pluginId.split(".")
+                val publisher = if (parts.size > 2) parts.dropLast(1).joinToString(".") else pluginId
+
+                UnifiedPackage(
+                    name = pluginId,
+                    publisher = publisher,
+                    installedVersion = firstPlugin.version,
+                    latestVersion = update?.latestVersion,
+                    description = null,
+                    homepage = "https://plugins.gradle.org/plugin/$pluginId",
+                    license = null,
+                    scope = "plugin",
+                    modules = modules,
+                    source = PackageSource.GRADLE_PLUGIN_INSTALLED,
+                    metadata = PackageMetadata.GradlePluginMetadata(
+                        buildFile = firstPlugin.buildFile,
+                        offset = firstPlugin.offset,
+                        length = firstPlugin.length,
+                        pluginSyntax = firstPlugin.pluginSyntax,
+                        isKotlinShorthand = firstPlugin.isKotlinShorthand,
+                        isApplied = firstPlugin.isApplied
+                    )
+                )
+            }
+    }
+
+    /**
+     * Group installed Maven plugins by their ID and aggregate modules.
+     */
+    fun aggregateMavenPluginsByPackage(
+        plugins: List<MavenInstalledPlugin>,
+        updates: List<MavenPluginUpdate>
+    ): List<UnifiedPackage> {
+        val updateMap = updates.associateBy { it.installed.id }
+
+        return plugins
+            .groupBy { it.id }
+            .map { (id, pluginList) ->
+                val firstPlugin = pluginList.first()
+                val update = updateMap[id]
+                val modules = pluginList.map { it.moduleName }.distinct()
+
+                val homepage = when {
+                    firstPlugin.groupId.startsWith("org.apache.maven.plugins") ->
+                        "https://maven.apache.org/plugins/${firstPlugin.artifactId}/"
+                    else ->
+                        "https://search.maven.org/artifact/${firstPlugin.groupId}/${firstPlugin.artifactId}"
+                }
+
+                UnifiedPackage(
+                    name = firstPlugin.artifactId,
+                    publisher = firstPlugin.groupId,
+                    installedVersion = firstPlugin.version,
+                    latestVersion = update?.latestVersion,
+                    description = null,
+                    homepage = homepage,
+                    license = null,
+                    scope = "plugin",
+                    modules = modules,
+                    source = PackageSource.MAVEN_PLUGIN_INSTALLED,
+                    metadata = PackageMetadata.MavenPluginMetadata(
+                        pomFile = firstPlugin.pomFile,
+                        offset = firstPlugin.offset,
+                        length = firstPlugin.length,
+                        phase = firstPlugin.phase,
+                        goals = firstPlugin.goals,
+                        inherited = firstPlugin.inherited,
+                        isFromPluginManagement = firstPlugin.isFromPluginManagement,
+                        configuration = firstPlugin.configuration
+                    )
+                )
+            }
     }
 }
