@@ -7,6 +7,7 @@ opentest4j = "1.3.0"
 mavenModel = "3.9.9"
 kotlinx-serialization = "1.6.3"
 jsoup = "1.18.3"
+ideStarter = "LATEST-EAP-SNAPSHOT"
 
 # plugins
 changelog = "2.4.0"
@@ -24,6 +25,14 @@ opentest4j = { group = "org.opentest4j", name = "opentest4j", version.ref = "ope
 mavenModel = { group = "org.apache.maven", name = "maven-model", version.ref = "mavenModel" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
 jsoup = { group = "org.jsoup", name = "jsoup", version.ref = "jsoup" }
+
+# IDE Starter + Driver for UI testing
+ideStarterSquashed = { group = "com.jetbrains.intellij.tools", name = "ide-starter-squashed", version.ref = "ideStarter" }
+ideStarterJunit5 = { group = "com.jetbrains.intellij.tools", name = "ide-starter-junit5", version.ref = "ideStarter" }
+ideStarterDriver = { group = "com.jetbrains.intellij.tools", name = "ide-starter-driver", version.ref = "ideStarter" }
+driverClient = { group = "com.jetbrains.intellij.driver", name = "driver-client", version.ref = "ideStarter" }
+driverSdk = { group = "com.jetbrains.intellij.driver", name = "driver-sdk", version.ref = "ideStarter" }
+driverModel = { group = "com.jetbrains.intellij.driver", name = "driver-model", version.ref = "ideStarter" }
 
 [plugins]
 changelog = { id = "org.jetbrains.changelog", version.ref = "changelog" }

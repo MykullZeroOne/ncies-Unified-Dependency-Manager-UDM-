@@ -51,6 +51,9 @@ import com.maddrobot.plugins.udm.ui.UpgradeAllAction
 import com.maddrobot.plugins.udm.ui.ConsolidateAction
 import com.maddrobot.plugins.udm.ui.RepositorySettingsAction
 import com.maddrobot.plugins.udm.ui.UdmToolbarActionGroup
+import com.maddrobot.plugins.udm.licensing.Feature
+import com.maddrobot.plugins.udm.licensing.LicenseChecker
+import com.maddrobot.plugins.udm.licensing.PremiumFeatureGuard
 import java.awt.BorderLayout
 import java.awt.FlowLayout
 import javax.swing.*
@@ -731,10 +734,18 @@ class UnifiedDependencyPanel(
     /**
      * Check vulnerabilities for installed packages asynchronously.
      * Updates the package list when vulnerabilities are found.
+     * PREMIUM FEATURE: Vulnerability scanning requires Premium license.
      */
     private fun checkVulnerabilitiesAsync(packages: List<UnifiedPackage>) {
         val settings = PackageFinderSettingState.getInstance()
         if (!settings.enableVulnerabilityScanning) {
+            return
+        }
+
+        // Silently skip vulnerability scanning for free tier (don't show prompt here)
+        // The prompt is shown when user explicitly clicks on vulnerability-related features
+        if (!LicenseChecker.getInstance().canUse(Feature.VULNERABILITY_SCAN)) {
+            uiLog.info("Vulnerability scanning is a Premium feature", "Vulnerability")
             return
         }
 
@@ -798,8 +809,14 @@ class UnifiedDependencyPanel(
     /**
      * Handle the "Ignore Vulnerability" action from the details panel.
      * Shows a confirmation dialog, then inserts the ignore comment in the build file.
+     * PREMIUM FEATURE: Vulnerability allowlist requires Premium license.
      */
     private fun handleIgnoreVulnerability(pkg: UnifiedPackage, vulnInfo: com.maddrobot.plugins.udm.gradle.manager.model.VulnerabilityInfo) {
+        // Gate behind Premium license
+        if (!PremiumFeatureGuard.checkOrPrompt(project, Feature.VULNERABILITY_ALLOWLIST)) {
+            return
+        }
+
         val dialog = VulnerabilityIgnoreDialog(project, pkg, vulnInfo)
         if (dialog.showAndGet()) {
             val reason = dialog.reason
@@ -1759,8 +1776,14 @@ class UnifiedDependencyPanel(
 
     /**
      * Add an exclusion to a dependency.
+     * PREMIUM FEATURE: Exclusion management requires Premium license.
      */
     private fun performAddExclusion(pkg: UnifiedPackage, exclusion: DependencyExclusion) {
+        // Gate behind Premium license
+        if (!PremiumFeatureGuard.checkOrPrompt(project, Feature.EXCLUSION_MANAGEMENT)) {
+            return
+        }
+
         val metadata = pkg.metadata
 
         uiLog.info("AddExclusion: Adding ${exclusion.id} to ${pkg.id}", "Exclusion")
@@ -2372,8 +2395,14 @@ class UnifiedDependencyPanel(
 
     /**
      * Show the dependency tree dialog for a package.
+     * PREMIUM FEATURE: Requires Premium license.
      */
     private fun showDependencyTree(pkg: UnifiedPackage) {
+        // Gate behind Premium license
+        if (!PremiumFeatureGuard.checkOrPrompt(project, Feature.DEPENDENCY_TREE)) {
+            return
+        }
+
         DependencyTreeDialog(
             project,
             pkg,
@@ -2390,8 +2419,14 @@ class UnifiedDependencyPanel(
 
     /**
      * Show what packages depend on this package (reverse dependencies).
+     * PREMIUM FEATURE: Requires Premium license.
      */
     private fun showReverseDependents(pkg: UnifiedPackage) {
+        // Gate behind Premium license
+        if (!PremiumFeatureGuard.checkOrPrompt(project, Feature.TRANSITIVE_ANALYSIS)) {
+            return
+        }
+
         DependencyTreeDialog(project, pkg, DependencyTreeDialog.Mode.DEPENDENTS).show()
     }
 

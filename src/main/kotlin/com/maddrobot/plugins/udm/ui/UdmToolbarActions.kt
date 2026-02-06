@@ -10,6 +10,9 @@ import com.intellij.openapi.project.Project
 import com.intellij.ui.SearchTextField
 import com.maddrobot.plugins.udm.PackageFinderBundle.message
 import com.maddrobot.plugins.udm.gradle.manager.service.RepositoryConfig
+import com.maddrobot.plugins.udm.licensing.Feature
+import com.maddrobot.plugins.udm.licensing.LicenseChecker
+import com.maddrobot.plugins.udm.licensing.PremiumFeatureGuard
 import javax.swing.*
 import java.awt.Dimension
 import java.awt.event.KeyEvent
@@ -236,6 +239,7 @@ class RefreshAction(
 
 /**
  * Action to open bulk upgrade dialog for all packages with updates.
+ * PREMIUM FEATURE: Requires Premium license.
  */
 class UpgradeAllAction(
     private val project: Project,
@@ -246,13 +250,23 @@ class UpgradeAllAction(
     AllIcons.Actions.Upload
 ) {
     private var hasUpdates = false
+    private val isPremium: Boolean get() = LicenseChecker.getInstance().isPremium()
 
     override fun actionPerformed(e: AnActionEvent) {
+        // Gate behind Premium license
+        if (!PremiumFeatureGuard.checkOrPrompt(project, Feature.BULK_UPGRADE)) {
+            return
+        }
         onUpgradeAll()
     }
 
     override fun update(e: AnActionEvent) {
         e.presentation.isEnabled = hasUpdates
+        // Show premium badge in tooltip if not licensed
+        if (!isPremium) {
+            e.presentation.text = "Upgrade All (Premium)"
+            e.presentation.description = "Bulk upgrade requires a Premium license"
+        }
     }
 
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
@@ -266,6 +280,7 @@ class UpgradeAllAction(
 
 /**
  * Action to consolidate package versions across modules.
+ * PREMIUM FEATURE: Requires Premium license.
  */
 class ConsolidateAction(
     private val project: Project,
@@ -276,13 +291,23 @@ class ConsolidateAction(
     AllIcons.Actions.GroupBy
 ) {
     private var hasInconsistentVersions = false
+    private val isPremium: Boolean get() = LicenseChecker.getInstance().isPremium()
 
     override fun actionPerformed(e: AnActionEvent) {
+        // Gate behind Premium license
+        if (!PremiumFeatureGuard.checkOrPrompt(project, Feature.VERSION_CONSOLIDATION)) {
+            return
+        }
         onConsolidate()
     }
 
     override fun update(e: AnActionEvent) {
         e.presentation.isEnabled = hasInconsistentVersions
+        // Show premium badge in tooltip if not licensed
+        if (!isPremium) {
+            e.presentation.text = "Consolidate Versions (Premium)"
+            e.presentation.description = "Version consolidation requires a Premium license"
+        }
     }
 
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT

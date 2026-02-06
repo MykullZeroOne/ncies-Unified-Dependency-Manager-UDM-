@@ -49,6 +49,14 @@ dependencies {
     testRuntimeOnly(libs.junit5.launcher)
     testImplementation(libs.kodein)
 
+    // IDE Starter + Driver for UI automation tests
+    testImplementation(libs.ideStarterSquashed)
+    testImplementation(libs.ideStarterJunit5)
+    testImplementation(libs.ideStarterDriver)
+    testImplementation(libs.driverClient)
+    testImplementation(libs.driverSdk)
+    testImplementation(libs.driverModel)
+
     // IntelliJ Platform Gradle Plugin Dependencies Extension - read more: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-dependencies-extension.html
     intellijPlatform {
         create(providers.gradleProperty("platformType"), providers.gradleProperty("platformVersion"))
@@ -180,8 +188,20 @@ tasks {
                 "-Xms512m",
                 "-Xmx2048m",
                 "-XX:MaxMetaspaceSize=768m",
+                // Enable dev mode for licensing bypass during development
+                "-Dudm.dev.mode=true",
             )
         }
+    }
+
+    // License key generator task
+    register<JavaExec>("generateLicense") {
+        group = "udm"
+        description = "Generate a UDM license key. Usage: ./gradlew generateLicense --args=\"email@example.com 2027-12-31\""
+        classpath = sourceSets["main"].runtimeClasspath
+        mainClass.set("com.maddrobot.plugins.udm.licensing.LicenseKeyGeneratorKt")
+        // Default to showing usage if no args provided
+        args = listOf("generate", project.findProperty("email")?.toString() ?: "")
     }
 
     // Increase heap for unit/integration tests (they can also start IDE components)

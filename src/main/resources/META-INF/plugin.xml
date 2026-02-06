@@ -40,7 +40,20 @@
             displayType="BALLOON"
             key="notification.group.general.name"
         />
+        <!-- License management service -->
+        <applicationService
+            serviceImplementation="com.maddrobot.plugins.udm.licensing.LicenseChecker"/>
     </extensions>
+
+    <!-- License action in Tools menu -->
+    <actions>
+        <action id="com.maddrobot.plugins.udm.licensing.LicenseAction"
+                class="com.maddrobot.plugins.udm.licensing.LicenseAction"
+                text="UDM License..."
+                description="Manage UDM plugin license">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+        </action>
+    </actions>
 
     <!-- Kotlin plugin mode compatibility declaration -->
     <!-- See: https://kotlin.github.io/analysis-api/migrating-from-k1.html#declaring-compatibility-with-the-k2-kotlin-mode -->
