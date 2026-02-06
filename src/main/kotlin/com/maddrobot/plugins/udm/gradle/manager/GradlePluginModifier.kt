@@ -351,6 +351,8 @@ class GradlePluginModifier(private val project: Project) {
 
         WriteCommandAction.runWriteCommandAction(project, commandName, null, {
             document.setText(newContent)
+            // Save the document immediately so VFS refresh reads the updated content
+            FileDocumentManager.getInstance().saveDocument(document)
         })
     }
 
