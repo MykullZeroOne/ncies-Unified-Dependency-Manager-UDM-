@@ -17,6 +17,7 @@ import com.intellij.ui.components.JBLabel
 import com.intellij.util.ui.JBUI
 import com.maddrobot.plugins.udm.PackageFinderBundle.message
 import com.maddrobot.plugins.udm.gradle.manager.*
+import com.maddrobot.plugins.udm.gradle.manager.model.DependencyExclusion
 import com.maddrobot.plugins.udm.gradle.manager.model.PackageAdapters
 import com.maddrobot.plugins.udm.gradle.manager.model.PackageMetadata
 import com.maddrobot.plugins.udm.gradle.manager.model.PackageSource
@@ -358,6 +359,15 @@ class UnifiedDependencyPanel(
             }
         }
 
+        // Exclusion management callbacks
+        detailsPanel.onExclusionAddRequested = { pkg, exclusion ->
+            performAddExclusion(pkg, exclusion)
+        }
+
+        detailsPanel.onExclusionRemoveRequested = { pkg, exclusion ->
+            performRemoveExclusion(pkg, exclusion)
+        }
+
         // Context menu callbacks for list panel (enables keyboard shortcuts and right-click actions)
         listPanel.contextMenuCallbacks = PackageContextMenuBuilder.ContextMenuCallbacks(
             onInstall = { pkg ->
@@ -401,6 +411,13 @@ class UnifiedDependencyPanel(
                 val url = vulnInfo.advisoryUrl ?: vulnInfo.cveId?.let { "https://nvd.nist.gov/vuln/detail/$it" }
                 if (url != null) {
                     BrowserUtil.browse(url)
+                }
+            },
+            onManageExclusions = { pkg ->
+                // Open exclusion dialog directly
+                val dialog = ExclusionDialog(project, pkg.id)
+                if (dialog.showAndGet()) {
+                    performAddExclusion(pkg, dialog.getExclusion())
                 }
             }
         )
@@ -671,8 +688,19 @@ class UnifiedDependencyPanel(
         if (isMavenProject) {
             uiLog.debug("Maven project detected, scanning dependencies and plugins...", "Plugins")
 
+            // Check for updates on Maven dependencies
+            val mavenDependencyVersions = try {
+                mavenInstalledDependencies.associate { dep ->
+                    val latestVersion = MavenPluginUpdateService.getLatestVersion(dep.groupId, dep.artifactId)
+                    dep.id to latestVersion
+                }.filterValues { it != null }.mapValues { it.value!! }
+            } catch (e: Exception) {
+                log.warn("Failed to check Maven dependency updates", e)
+                emptyMap()
+            }
+
             packages.addAll(
-                PackageAdapters.aggregateMavenByPackage(mavenInstalledDependencies)
+                PackageAdapters.aggregateMavenByPackage(mavenInstalledDependencies, mavenDependencyVersions)
             )
 
             // Add Maven plugins (scan separately from update check for resilience)
@@ -1727,6 +1755,138 @@ class UnifiedDependencyPanel(
         }
     }
 
+    // ========== Exclusion Management ==========
+
+    /**
+     * Add an exclusion to a dependency.
+     */
+    private fun performAddExclusion(pkg: UnifiedPackage, exclusion: DependencyExclusion) {
+        val metadata = pkg.metadata
+
+        uiLog.info("AddExclusion: Adding ${exclusion.id} to ${pkg.id}", "Exclusion")
+
+        when (metadata) {
+            is PackageMetadata.GradleMetadata -> {
+                val installed = gradleDependencyService.installedDependencies.find {
+                    it.groupId == pkg.publisher && it.artifactId == pkg.name
+                }
+                if (installed == null) {
+                    uiLog.error("AddExclusion: Could not find ${pkg.id} in installed dependencies", "Exclusion")
+                    return
+                }
+
+                val virtualFile = LocalFileSystem.getInstance().findFileByPath(installed.buildFile) ?: return
+                virtualFile.refresh(false, false)
+                val document = FileDocumentManager.getInstance().getDocument(virtualFile) ?: return
+                val originalContent = document.text
+                val newContent = gradleModifier.getContentWithExclusionAdded(installed, exclusion)
+                if (newContent == null) {
+                    uiLog.error("AddExclusion: Failed to generate content with exclusion", "Exclusion")
+                    return
+                }
+
+                applyWithOptionalPreview(installed.buildFile, originalContent, newContent, "Add Exclusion: ${exclusion.id}") {
+                    gradleModifier.applyChanges(installed, newContent, "Add Exclusion: ${exclusion.id}")
+                    refresh()
+                    uiLog.info("AddExclusion: Successfully added ${exclusion.id} to ${pkg.id}", "Exclusion")
+                }
+            }
+            is PackageMetadata.MavenInstalledMetadata -> {
+                val installed = mavenInstalledDependencies.find {
+                    it.groupId == pkg.publisher && it.artifactId == pkg.name
+                }
+                if (installed == null) {
+                    uiLog.error("AddExclusion: Could not find ${pkg.id} in Maven installed dependencies", "Exclusion")
+                    return
+                }
+
+                val virtualFile = LocalFileSystem.getInstance().findFileByPath(installed.pomFile) ?: return
+                virtualFile.refresh(false, false)
+                val document = FileDocumentManager.getInstance().getDocument(virtualFile) ?: return
+                val originalContent = document.text
+                val newContent = mavenModifier.getContentWithExclusionAdded(installed, exclusion)
+                if (newContent == null) {
+                    uiLog.error("AddExclusion: Failed to generate content with exclusion", "Exclusion")
+                    return
+                }
+
+                applyWithOptionalPreview(installed.pomFile, originalContent, newContent, "Add Exclusion: ${exclusion.id}") {
+                    mavenModifier.applyChanges(installed, newContent, "Add Exclusion: ${exclusion.id}")
+                    refresh()
+                    uiLog.info("AddExclusion: Successfully added ${exclusion.id} to ${pkg.id}", "Exclusion")
+                }
+            }
+            else -> {
+                uiLog.error("AddExclusion: Unsupported metadata type: ${metadata::class.simpleName}", "Exclusion")
+            }
+        }
+    }
+
+    /**
+     * Remove an exclusion from a dependency.
+     */
+    private fun performRemoveExclusion(pkg: UnifiedPackage, exclusion: DependencyExclusion) {
+        val metadata = pkg.metadata
+
+        uiLog.info("RemoveExclusion: Removing ${exclusion.id} from ${pkg.id}", "Exclusion")
+
+        when (metadata) {
+            is PackageMetadata.GradleMetadata -> {
+                val installed = gradleDependencyService.installedDependencies.find {
+                    it.groupId == pkg.publisher && it.artifactId == pkg.name
+                }
+                if (installed == null) {
+                    uiLog.error("RemoveExclusion: Could not find ${pkg.id} in installed dependencies", "Exclusion")
+                    return
+                }
+
+                val virtualFile = LocalFileSystem.getInstance().findFileByPath(installed.buildFile) ?: return
+                virtualFile.refresh(false, false)
+                val document = FileDocumentManager.getInstance().getDocument(virtualFile) ?: return
+                val originalContent = document.text
+                val newContent = gradleModifier.getContentWithExclusionRemoved(installed, exclusion)
+                if (newContent == null) {
+                    uiLog.error("RemoveExclusion: Failed to generate content without exclusion", "Exclusion")
+                    return
+                }
+
+                applyWithOptionalPreview(installed.buildFile, originalContent, newContent, "Remove Exclusion: ${exclusion.id}") {
+                    gradleModifier.applyChanges(installed, newContent, "Remove Exclusion: ${exclusion.id}")
+                    refresh()
+                    uiLog.info("RemoveExclusion: Successfully removed ${exclusion.id} from ${pkg.id}", "Exclusion")
+                }
+            }
+            is PackageMetadata.MavenInstalledMetadata -> {
+                val installed = mavenInstalledDependencies.find {
+                    it.groupId == pkg.publisher && it.artifactId == pkg.name
+                }
+                if (installed == null) {
+                    uiLog.error("RemoveExclusion: Could not find ${pkg.id} in Maven installed dependencies", "Exclusion")
+                    return
+                }
+
+                val virtualFile = LocalFileSystem.getInstance().findFileByPath(installed.pomFile) ?: return
+                virtualFile.refresh(false, false)
+                val document = FileDocumentManager.getInstance().getDocument(virtualFile) ?: return
+                val originalContent = document.text
+                val newContent = mavenModifier.getContentWithExclusionRemoved(installed, exclusion)
+                if (newContent == null) {
+                    uiLog.error("RemoveExclusion: Failed to generate content without exclusion", "Exclusion")
+                    return
+                }
+
+                applyWithOptionalPreview(installed.pomFile, originalContent, newContent, "Remove Exclusion: ${exclusion.id}") {
+                    mavenModifier.applyChanges(installed, newContent, "Remove Exclusion: ${exclusion.id}")
+                    refresh()
+                    uiLog.info("RemoveExclusion: Successfully removed ${exclusion.id} from ${pkg.id}", "Exclusion")
+                }
+            }
+            else -> {
+                uiLog.error("RemoveExclusion: Unsupported metadata type: ${metadata::class.simpleName}", "Exclusion")
+            }
+        }
+    }
+
     private fun performUninstall(pkg: UnifiedPackage) {
         val metadata = pkg.metadata
 
@@ -2214,7 +2374,18 @@ class UnifiedDependencyPanel(
      * Show the dependency tree dialog for a package.
      */
     private fun showDependencyTree(pkg: UnifiedPackage) {
-        DependencyTreeDialog(project, pkg, DependencyTreeDialog.Mode.DEPENDENCIES).show()
+        DependencyTreeDialog(
+            project,
+            pkg,
+            DependencyTreeDialog.Mode.DEPENDENCIES,
+            onExcludeRequested = { node ->
+                val exclusion = DependencyExclusion(
+                    groupId = node.groupId,
+                    artifactId = node.artifactId
+                )
+                performAddExclusion(pkg, exclusion)
+            }
+        ).show()
     }
 
     /**

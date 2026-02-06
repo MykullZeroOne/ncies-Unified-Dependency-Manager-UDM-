@@ -1,7 +1,9 @@
 package com.maddrobot.plugins.udm.gradle.manager.ui
 
 import com.intellij.icons.AllIcons
+import com.intellij.openapi.actionSystem.*
 import com.intellij.openapi.ide.CopyPasteManager
+import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.DialogWrapper
 import com.intellij.ui.*
@@ -19,10 +21,13 @@ import java.awt.Component
 import java.awt.Dimension
 import java.awt.FlowLayout
 import java.awt.datatransfer.StringSelection
+import java.awt.event.MouseAdapter
+import java.awt.event.MouseEvent
 import javax.swing.*
 import javax.swing.tree.DefaultMutableTreeNode
 import javax.swing.tree.DefaultTreeCellRenderer
 import javax.swing.tree.DefaultTreeModel
+import javax.swing.tree.TreePath
 
 /**
  * Dialog for visualizing the dependency tree of a package.
@@ -32,7 +37,8 @@ import javax.swing.tree.DefaultTreeModel
 class DependencyTreeDialog(
     private val project: Project,
     private val rootPackage: UnifiedPackage,
-    private val mode: Mode = Mode.DEPENDENCIES
+    private val mode: Mode = Mode.DEPENDENCIES,
+    private val onExcludeRequested: ((DependencyNode) -> Unit)? = null
 ) : DialogWrapper(project) {
 
     enum class Mode {
@@ -125,6 +131,54 @@ class DependencyTreeDialog(
             showsRootHandles = true
             cellRenderer = DependencyTreeCellRenderer()
         }
+
+        // Right-click context menu - use PopupHandler for cross-platform support
+        tree.addMouseListener(object : MouseAdapter() {
+            override fun mouseClicked(e: MouseEvent) {
+                // Handle right-click on macOS (button 3) or Ctrl+click
+                if (e.button == MouseEvent.BUTTON3 || (e.button == MouseEvent.BUTTON1 && e.isControlDown)) {
+                    showPopup(e)
+                }
+            }
+
+            override fun mousePressed(e: MouseEvent) {
+                if (e.isPopupTrigger) showPopup(e)
+            }
+
+            override fun mouseReleased(e: MouseEvent) {
+                if (e.isPopupTrigger) showPopup(e)
+            }
+
+            private fun showPopup(e: MouseEvent) {
+                val path = tree.getPathForLocation(e.x, e.y) ?: return
+                tree.selectionPath = path
+                val node = (path.lastPathComponent as? DefaultMutableTreeNode) ?: return
+                val dep = node.userObject as? DependencyNode ?: return
+
+                val menu = JPopupMenu()
+
+                // "Exclude" action — only for child nodes (not root) and when callback is provided
+                if (dep.depth > 0 && onExcludeRequested != null) {
+                    val excludeItem = JMenuItem("Exclude ${dep.artifactId} from ${rootPackage.name}").apply {
+                        icon = AllIcons.Actions.Cancel
+                        addActionListener { onExcludeRequested.invoke(dep) }
+                    }
+                    menu.add(excludeItem)
+                    menu.addSeparator()
+                }
+
+                // "Copy Coordinate" action
+                val copyItem = JMenuItem("Copy Coordinate").apply {
+                    icon = AllIcons.Actions.Copy
+                    addActionListener {
+                        CopyPasteManager.getInstance().setContents(StringSelection(dep.fullCoordinate))
+                    }
+                }
+                menu.add(copyItem)
+
+                menu.show(tree, e.x, e.y)
+            }
+        })
 
         // Status and action buttons
         val bottomPanel = JPanel(BorderLayout()).apply {

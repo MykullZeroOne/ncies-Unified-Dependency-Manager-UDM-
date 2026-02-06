@@ -5,6 +5,7 @@ import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VirtualFile
+import com.maddrobot.plugins.udm.gradle.manager.model.DependencyExclusion
 import org.w3c.dom.Document
 import org.w3c.dom.Element
 import org.w3c.dom.Node
@@ -138,6 +139,9 @@ class MavenDependencyScanner(private val project: Project) {
         val scope = getChildText(element, "scope") ?: "compile"
         val optional = getChildText(element, "optional")?.toBoolean() ?: false
 
+        // Parse exclusions
+        val exclusions = parseExclusions(element)
+
         // Calculate offset in the original file for editing
         // Find the position of this dependency in the content
         val offset = findDependencyOffset(content, groupId, artifactId)
@@ -151,8 +155,34 @@ class MavenDependencyScanner(private val project: Project) {
             moduleName = moduleName,
             pomFile = filePath,
             offset = offset,
-            length = 0 // Will be calculated when needed for editing
+            length = 0, // Will be calculated when needed for editing
+            exclusions = exclusions
         )
+    }
+
+    /**
+     * Parse <exclusions> block from a <dependency> element.
+     */
+    private fun parseExclusions(dependencyElement: Element): List<DependencyExclusion> {
+        val exclusions = mutableListOf<DependencyExclusion>()
+        val exclusionsNodes = dependencyElement.getElementsByTagName("exclusions")
+        for (i in 0 until exclusionsNodes.length) {
+            val exclusionsElement = exclusionsNodes.item(i)
+            if (exclusionsElement.parentNode != dependencyElement) continue
+            val exclusionNodes = (exclusionsElement as Element).getElementsByTagName("exclusion")
+            for (j in 0 until exclusionNodes.length) {
+                val exclusionElement = exclusionNodes.item(j) as Element
+                val exGroupId = getChildText(exclusionElement, "groupId")
+                val exArtifactId = getChildText(exclusionElement, "artifactId")
+                if (exGroupId != null) {
+                    exclusions.add(DependencyExclusion(
+                        groupId = exGroupId,
+                        artifactId = exArtifactId?.takeIf { it != "*" }
+                    ))
+                }
+            }
+        }
+        return exclusions
     }
 
     private fun extractProperties(doc: Document): Map<String, String> {
@@ -276,7 +306,8 @@ data class MavenInstalledDependency(
     val moduleName: String,
     val pomFile: String,
     val offset: Int = -1,
-    val length: Int = 0
+    val length: Int = 0,
+    val exclusions: List<com.maddrobot.plugins.udm.gradle.manager.model.DependencyExclusion> = emptyList()
 ) {
     val id: String get() = "$groupId:$artifactId"
     val fullName: String get() = "$groupId:$artifactId:$version"

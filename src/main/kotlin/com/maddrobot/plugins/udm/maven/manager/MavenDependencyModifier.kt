@@ -4,6 +4,7 @@ import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.LocalFileSystem
+import com.maddrobot.plugins.udm.gradle.manager.model.DependencyExclusion
 
 /**
  * Modifies Maven pom.xml files to add, update, or remove dependencies.
@@ -124,6 +125,93 @@ class MavenDependencyModifier(private val project: Project) {
         }
 
         return null
+    }
+
+    /**
+     * Get content with an exclusion added to the given dependency.
+     */
+    fun getContentWithExclusionAdded(dependency: MavenInstalledDependency, exclusion: DependencyExclusion): String? {
+        val virtualFile = LocalFileSystem.getInstance().findFileByPath(dependency.pomFile) ?: return null
+        val document = FileDocumentManager.getInstance().getDocument(virtualFile) ?: return null
+        val text = document.text
+
+        val depRange = findDependencyRange(text, dependency.groupId, dependency.artifactId) ?: return null
+        val (start, end) = depRange
+        val depBlock = text.substring(start, end)
+        val indent = detectIndent(depBlock)
+        val innerIndent = "$indent    "
+        val exclInnerIndent = "$innerIndent    "
+
+        val exclusionXml = buildString {
+            append("$exclInnerIndent<exclusion>\n")
+            append("$exclInnerIndent    <groupId>${exclusion.groupId}</groupId>\n")
+            if (exclusion.artifactId != null) {
+                append("$exclInnerIndent    <artifactId>${exclusion.artifactId}</artifactId>\n")
+            } else {
+                append("$exclInnerIndent    <artifactId>*</artifactId>\n")
+            }
+            append("$exclInnerIndent</exclusion>")
+        }
+
+        val newDepBlock: String
+        val exclusionsEndTag = "</exclusions>"
+        val exclusionsStartIdx = depBlock.indexOf("<exclusions>")
+
+        if (exclusionsStartIdx != -1) {
+            // Existing <exclusions> block — insert before </exclusions>
+            val exclusionsEndIdx = depBlock.indexOf(exclusionsEndTag, exclusionsStartIdx)
+            if (exclusionsEndIdx == -1) return null
+            val before = depBlock.substring(0, exclusionsEndIdx)
+            val after = depBlock.substring(exclusionsEndIdx)
+            newDepBlock = "$before$exclusionXml\n$innerIndent$after"
+        } else {
+            // No <exclusions> block — insert before </dependency>
+            val closingTag = "</dependency>"
+            val closingIdx = depBlock.indexOf(closingTag)
+            if (closingIdx == -1) return null
+            val before = depBlock.substring(0, closingIdx)
+            val after = depBlock.substring(closingIdx)
+            val exclusionsBlock = "${innerIndent}<exclusions>\n$exclusionXml\n$innerIndent</exclusions>\n$indent"
+            newDepBlock = "$before$exclusionsBlock$after"
+        }
+
+        val sb = StringBuilder(text)
+        sb.replace(start, end, newDepBlock)
+        return sb.toString()
+    }
+
+    /**
+     * Get content with an exclusion removed from the given dependency.
+     */
+    fun getContentWithExclusionRemoved(dependency: MavenInstalledDependency, exclusion: DependencyExclusion): String? {
+        val virtualFile = LocalFileSystem.getInstance().findFileByPath(dependency.pomFile) ?: return null
+        val document = FileDocumentManager.getInstance().getDocument(virtualFile) ?: return null
+        val text = document.text
+
+        val depRange = findDependencyRange(text, dependency.groupId, dependency.artifactId) ?: return null
+        val (start, end) = depRange
+        val depBlock = text.substring(start, end)
+
+        // Find and remove the matching <exclusion> element
+        val artifactPattern = if (exclusion.artifactId != null) {
+            Regex.escape(exclusion.artifactId)
+        } else {
+            "\\*"
+        }
+        val exclusionPattern = Regex(
+            """[ \t]*<exclusion>\s*<groupId>\s*${Regex.escape(exclusion.groupId)}\s*</groupId>\s*<artifactId>\s*$artifactPattern\s*</artifactId>\s*</exclusion>\s*\n?""",
+            RegexOption.DOT_MATCHES_ALL
+        )
+
+        var newDepBlock = exclusionPattern.replace(depBlock, "")
+
+        // If <exclusions> block is now empty, remove it entirely
+        val emptyExclusionsPattern = Regex("""[ \t]*<exclusions>\s*</exclusions>\s*\n?""", RegexOption.DOT_MATCHES_ALL)
+        newDepBlock = emptyExclusionsPattern.replace(newDepBlock, "")
+
+        val sb = StringBuilder(text)
+        sb.replace(start, end, newDepBlock)
+        return sb.toString()
     }
 
     /**

@@ -4,7 +4,10 @@ import com.intellij.icons.AllIcons
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.ActionPlaces
+import com.intellij.openapi.actionSystem.DataContext
 import com.intellij.openapi.project.Project
+import com.maddrobot.plugins.udm.ui.SELECTED_PACKAGE_KEY
+import com.maddrobot.plugins.udm.ui.SELECTED_PACKAGES_KEY
 import com.intellij.openapi.util.Disposer
 import com.intellij.ui.DocumentAdapter
 import com.intellij.ui.JBColor
@@ -301,11 +304,24 @@ class PackageListPanel(
             selectedPackages = selectedPackagesList,
             callbacks = contextMenuCallbacks
         )
-        val popupMenu = ActionManager.getInstance().createActionPopupMenu(
+
+        // Create a DataContext that includes the selected package data
+        val dataContext = object : DataContext {
+            override fun getData(dataId: String): Any? {
+                return when (dataId) {
+                    SELECTED_PACKAGE_KEY.name -> selectedPackage
+                    SELECTED_PACKAGES_KEY.name -> selectedPackagesList
+                    else -> null
+                }
+            }
+        }
+
+        val popup = ActionManager.getInstance().createActionPopupMenu(
             ActionPlaces.POPUP,
             actionGroup
         )
-        popupMenu.component.show(component, x, y)
+        popup.setDataContext { dataContext }
+        popup.component.show(component, x, y)
     }
 
     /**
@@ -862,6 +878,11 @@ class PackageListPanel(
             }
             if (status.isPrerelease && !status.hasUpdate) {
                 badgePanel.add(StatusBadge(StatusBadge.BadgeType.PRERELEASE))
+            }
+
+            // Add plugin badge for plugins (helps distinguish from dependencies with same name)
+            if (isPlugin(pkg)) {
+                badgePanel.add(StatusBadge(StatusBadge.BadgeType.PLUGIN))
             }
 
             // Set tooltip with detailed status info

@@ -20,6 +20,7 @@ import com.intellij.util.ui.UIUtil
 import com.maddrobot.plugins.udm.PackageFinderBundle.message
 import com.maddrobot.plugins.udm.gradle.manager.GradleDependencyModifier
 import com.maddrobot.plugins.udm.gradle.manager.model.AvailableRepository
+import com.maddrobot.plugins.udm.gradle.manager.model.DependencyExclusion
 import com.maddrobot.plugins.udm.gradle.manager.model.PackageMetadata
 import com.maddrobot.plugins.udm.gradle.manager.model.PackageSource
 import com.maddrobot.plugins.udm.gradle.manager.model.UnifiedPackage
@@ -81,6 +82,9 @@ class PackageDetailsPanel(
     private val versionComboBox = JComboBox<VersionItem>().apply {
         preferredSize = Dimension(150, preferredSize.height)
         renderer = VersionListCellRenderer()
+    }
+    private val applyVersionButton = JButton("Apply").apply {
+        isVisible = false
     }
     private var isLoadingVersions = false
 
@@ -178,10 +182,17 @@ class PackageDetailsPanel(
         border = JBUI.Borders.empty(4)
     }
 
+    // === EXCLUSIONS SECTION ===
+    private val exclusionsPanel = JPanel().apply {
+        layout = BoxLayout(this, BoxLayout.Y_AXIS)
+        border = JBUI.Borders.empty(4)
+    }
+
     // Collapsible section panels (initialized in createContentPanel)
     private lateinit var dependenciesCollapsible: CollapsibleSectionPanel
     private lateinit var buildFileCollapsible: CollapsibleSectionPanel
     private lateinit var vulnerabilityCollapsible: CollapsibleSectionPanel
+    private lateinit var exclusionsCollapsible: CollapsibleSectionPanel
 
     // === ACTION BUTTONS ===
     private val installButton = JButton(message("unified.details.button.install")).apply {
@@ -221,6 +232,8 @@ class PackageDetailsPanel(
     var onModulesNeeded: (() -> List<String>)? = null
     var onIgnoreVulnerabilityRequested: ((UnifiedPackage, VulnerabilityInfo) -> Unit)? = null
     var onConfigurePluginRequested: ((UnifiedPackage) -> Unit)? = null
+    var onExclusionAddRequested: ((UnifiedPackage, DependencyExclusion) -> Unit)? = null
+    var onExclusionRemoveRequested: ((UnifiedPackage, DependencyExclusion) -> Unit)? = null
 
     private val detailsPanel = JPanel(BorderLayout())
     private val emptyPanel = createEmptyPanel()
@@ -346,6 +359,17 @@ class PackageDetailsPanel(
             setContent(dependenciesPanel)
         }
 
+        // === EXCLUSIONS SECTION (Collapsible, collapsed by default) ===
+        exclusionsCollapsible = CollapsibleSectionPanel(
+            message("unified.exclusion.section.title"),
+            initiallyExpanded = false
+        ).apply {
+            alignmentX = Component.LEFT_ALIGNMENT
+            maximumSize = Dimension(Int.MAX_VALUE, 200)
+            setContent(exclusionsPanel)
+            isVisible = false // Only visible for installed Gradle/Maven deps with possible exclusions
+        }
+
         // === BUILD FILE SECTION (Collapsible, collapsed by default) ===
         setupBuildFilePanel()
         buildFileCollapsible = CollapsibleSectionPanel(
@@ -395,6 +419,8 @@ class PackageDetailsPanel(
         mainPanel.add(metadataPanel)
         mainPanel.add(Box.createVerticalStrut(12))
         mainPanel.add(dependenciesCollapsible)
+        mainPanel.add(Box.createVerticalStrut(8))
+        mainPanel.add(exclusionsCollapsible)
         mainPanel.add(Box.createVerticalStrut(8))
         mainPanel.add(buildFileCollapsible)
         mainPanel.add(Box.createVerticalGlue())
@@ -468,6 +494,8 @@ class PackageDetailsPanel(
         })
         versionSelectorPanel.add(versionComboBox)
         versionSelectorPanel.add(Box.createHorizontalStrut(8))
+        versionSelectorPanel.add(applyVersionButton)
+        versionSelectorPanel.add(Box.createHorizontalStrut(8))
 
         // Add loading spinner for versions
         val versionsLoadingLabel = JBLabel().apply {
@@ -475,6 +503,58 @@ class PackageDetailsPanel(
             isVisible = false
         }
         versionSelectorPanel.add(versionsLoadingLabel)
+
+        // Handle version selection changes
+        versionComboBox.addActionListener {
+            if (!isLoadingVersions) {
+                updateApplyVersionButton()
+            }
+        }
+
+        // Handle apply button click
+        applyVersionButton.addActionListener {
+            val pkg = selectedPackage ?: return@addActionListener
+            val selectedItem = versionComboBox.selectedItem as? VersionItem ?: return@addActionListener
+            val selectedVersion = selectedItem.version
+            val installedVersion = pkg.installedVersion ?: return@addActionListener
+
+            if (isVersionNewer(selectedVersion, installedVersion)) {
+                onUpdateRequested?.invoke(pkg, selectedVersion)
+            } else {
+                onDowngradeRequested?.invoke(pkg, selectedVersion)
+            }
+        }
+    }
+
+    /**
+     * Update the apply version button visibility and text based on selected version.
+     */
+    private fun updateApplyVersionButton() {
+        val pkg = selectedPackage
+        val selectedItem = versionComboBox.selectedItem as? VersionItem
+
+        if (pkg == null || selectedItem == null || !pkg.isInstalled) {
+            applyVersionButton.isVisible = false
+            return
+        }
+
+        val selectedVersion = selectedItem.version
+        val installedVersion = pkg.installedVersion
+
+        if (selectedVersion == installedVersion || selectedVersion == "Loading...") {
+            applyVersionButton.isVisible = false
+        } else {
+            applyVersionButton.isVisible = true
+            if (installedVersion != null && isVersionNewer(selectedVersion, installedVersion)) {
+                applyVersionButton.text = "Upgrade to $selectedVersion"
+                applyVersionButton.icon = AllIcons.Actions.Upload
+            } else {
+                applyVersionButton.text = "Downgrade to $selectedVersion"
+                applyVersionButton.icon = AllIcons.Actions.Download
+            }
+        }
+        versionSelectorPanel.revalidate()
+        versionSelectorPanel.repaint()
     }
 
     private fun setupSourceRepoPanel() {
@@ -929,6 +1009,9 @@ class PackageDetailsPanel(
         // Build file info
         updateBuildFileInfo(pkg)
 
+        // Exclusions info
+        updateExclusionsSection(pkg)
+
         // Source repository selector
         updateSourceRepoSelector(pkg)
 
@@ -998,6 +1081,89 @@ class PackageDetailsPanel(
         } else {
             buildFileCollapsible.isVisible = false
         }
+    }
+
+    /**
+     * Update the exclusions section.
+     * Shows existing exclusions with remove buttons and an Add Exclusion button.
+     */
+    private fun updateExclusionsSection(pkg: UnifiedPackage) {
+        exclusionsPanel.removeAll()
+
+        // Only show for installed Gradle/Maven dependencies and plugins
+        val isExclusionCapable = pkg.isInstalled && (
+            pkg.source == PackageSource.GRADLE_INSTALLED ||
+            pkg.source == PackageSource.MAVEN_INSTALLED ||
+            pkg.source == PackageSource.GRADLE_PLUGIN_INSTALLED ||
+            pkg.source == PackageSource.MAVEN_PLUGIN_INSTALLED
+        )
+
+        if (!isExclusionCapable) {
+            exclusionsCollapsible.isVisible = false
+            return
+        }
+
+        exclusionsCollapsible.isVisible = true
+        val exclusions = pkg.exclusions
+
+        if (exclusions.isEmpty()) {
+            // Empty state with just Add Exclusion button
+            val emptyLabel = JBLabel(message("unified.exclusion.empty")).apply {
+                foreground = JBColor.GRAY
+                alignmentX = Component.LEFT_ALIGNMENT
+            }
+            exclusionsPanel.add(emptyLabel)
+            exclusionsPanel.add(Box.createVerticalStrut(8))
+        } else {
+            // List each exclusion with a remove button
+            for (exclusion in exclusions) {
+                val row = JPanel(BorderLayout()).apply {
+                    alignmentX = Component.LEFT_ALIGNMENT
+                    maximumSize = Dimension(Int.MAX_VALUE, 28)
+                    border = JBUI.Borders.empty(2, 0)
+
+                    val label = JBLabel(exclusion.displayName).apply {
+                        icon = AllIcons.Nodes.ExceptionClass
+                    }
+                    add(label, BorderLayout.CENTER)
+
+                    val removeButton = JButton().apply {
+                        icon = AllIcons.General.Remove
+                        toolTipText = message("unified.exclusion.remove.button")
+                        preferredSize = Dimension(24, 24)
+                        isBorderPainted = false
+                        isContentAreaFilled = false
+                        addActionListener {
+                            selectedPackage?.let { currentPkg ->
+                                onExclusionRemoveRequested?.invoke(currentPkg, exclusion)
+                            }
+                        }
+                    }
+                    add(removeButton, BorderLayout.EAST)
+                }
+                exclusionsPanel.add(row)
+            }
+        }
+
+        // Add Exclusion button
+        val addButton = JButton(message("unified.exclusion.add.button")).apply {
+            icon = AllIcons.General.Add
+            alignmentX = Component.LEFT_ALIGNMENT
+            addActionListener {
+                selectedPackage?.let { currentPkg ->
+                    val dialog = ExclusionDialog(project, currentPkg.id)
+                    if (dialog.showAndGet()) {
+                        val newExclusion = dialog.getExclusion()
+                        onExclusionAddRequested?.invoke(currentPkg, newExclusion)
+                    }
+                }
+            }
+        }
+        exclusionsPanel.add(Box.createVerticalStrut(8))
+        exclusionsPanel.add(addButton)
+
+        exclusionsPanel.revalidate()
+        exclusionsPanel.repaint()
     }
 
     /**

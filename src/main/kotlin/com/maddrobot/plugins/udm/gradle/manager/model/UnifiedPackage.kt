@@ -92,6 +92,16 @@ data class UnifiedPackage(
     val isVulnerable: Boolean get() = vulnerabilityInfo != null
 
     /**
+     * Get exclusions configured on this dependency (Gradle or Maven installed only).
+     */
+    val exclusions: List<DependencyExclusion>
+        get() = when (metadata) {
+            is PackageMetadata.GradleMetadata -> metadata.exclusions
+            is PackageMetadata.MavenInstalledMetadata -> metadata.exclusions
+            else -> emptyList()
+        }
+
+    /**
      * Check if the installed version is a prerelease (alpha, beta, RC, SNAPSHOT, etc.)
      */
     val isPrerelease: Boolean get() {
@@ -155,7 +165,8 @@ sealed class PackageMetadata {
         val length: Int,
         val isFromVersionCatalog: Boolean,
         val catalogKey: String?,
-        val configuration: String
+        val configuration: String,
+        val exclusions: List<DependencyExclusion> = emptyList()
     ) : PackageMetadata()
 
     /**
@@ -166,7 +177,8 @@ sealed class PackageMetadata {
         val offset: Int,
         val length: Int,
         val scope: String,
-        val optional: Boolean
+        val optional: Boolean,
+        val exclusions: List<DependencyExclusion> = emptyList()
     ) : PackageMetadata()
 
     /**
@@ -257,7 +269,8 @@ object PackageAdapters {
                 length = dep.length,
                 isFromVersionCatalog = dep.isFromVersionCatalog,
                 catalogKey = dep.catalogKey,
-                configuration = dep.configuration
+                configuration = dep.configuration,
+                exclusions = dep.exclusions
             )
         )
     }
@@ -284,7 +297,8 @@ object PackageAdapters {
                 offset = dep.offset,
                 length = dep.length,
                 scope = dep.scope,
-                optional = dep.optional
+                optional = dep.optional,
+                exclusions = dep.exclusions
             )
         )
     }
@@ -382,7 +396,8 @@ object PackageAdapters {
                     length = installed.length,
                     isFromVersionCatalog = installed.isFromVersionCatalog,
                     catalogKey = installed.catalogKey,
-                    configuration = installed.configuration
+                    configuration = installed.configuration,
+                    exclusions = installed.exclusions
                 )
             }
         )
@@ -422,7 +437,8 @@ object PackageAdapters {
                         length = firstDep.length,
                         isFromVersionCatalog = firstDep.isFromVersionCatalog,
                         catalogKey = firstDep.catalogKey,
-                        configuration = firstDep.configuration
+                        configuration = firstDep.configuration,
+                        exclusions = firstDep.exclusions
                     )
                 )
             }
@@ -458,7 +474,8 @@ object PackageAdapters {
                         offset = firstDep.offset,
                         length = firstDep.length,
                         scope = firstDep.scope,
-                        optional = firstDep.optional
+                        optional = firstDep.optional,
+                        exclusions = firstDep.exclusions
                     )
                 )
             }
@@ -482,7 +499,8 @@ object PackageAdapters {
                 offset = installed.offset,
                 length = installed.length,
                 scope = installed.scope,
-                optional = installed.optional
+                optional = installed.optional,
+                exclusions = installed.exclusions
             )
         )
     }

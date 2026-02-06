@@ -96,6 +96,14 @@ class StatusBadge(
             JBColor(Color(0xE8F5E9), Color(0x1B5E20)),
             JBColor(Color(0x2E7D32), Color(0x81C784)),
             JBColor(Color(0x4CAF50), Color(0x4CAF50))
+        ),
+
+        /** Blue outline badge for plugins */
+        PLUGIN(
+            "Plugin",
+            JBColor(Color(0xE3F2FD), Color(0x0D47A1)),
+            JBColor(Color(0x1976D2), Color(0x64B5F6)),
+            JBColor(Color(0x2196F3), Color(0x2196F3))
         )
     }
 
