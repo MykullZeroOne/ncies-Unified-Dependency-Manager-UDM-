@@ -148,6 +148,16 @@ class PackageMetadataService(private val project: Project) {
         metadataCache.clear()
     }
 
+    /**
+     * Get cache statistics for debugging.
+     */
+    fun getCacheStats(): Map<String, Any> {
+        return mapOf(
+            "size" to metadataCache.size,
+            "entries" to metadataCache.keys.toList().take(20)
+        )
+    }
+
     private fun fetchPackageDetails(groupId: String, artifactId: String, version: String?): PackageDetails? {
         // First try to get info from Maven Central search API (faster, has description)
         val searchDetails = fetchFromMavenCentralSearch(groupId, artifactId)

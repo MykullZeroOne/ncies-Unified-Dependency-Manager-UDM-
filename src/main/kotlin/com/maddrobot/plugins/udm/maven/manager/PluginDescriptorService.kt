@@ -242,4 +242,14 @@ class PluginDescriptorService(private val project: Project) {
     fun clearCache() {
         cache.clear()
     }
+
+    /**
+     * Get cache statistics for debugging.
+     */
+    fun getCacheStats(): Map<String, Any> {
+        return mapOf(
+            "size" to cache.size,
+            "entries" to cache.keys.toList().take(20)
+        )
+    }
 }

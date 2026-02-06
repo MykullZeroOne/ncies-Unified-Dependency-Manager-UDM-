@@ -189,4 +189,14 @@ object MavenPluginUpdateService {
     fun clearCache() {
         versionCache.clear()
     }
+
+    /**
+     * Get cache statistics for debugging.
+     */
+    fun getCacheStats(): Map<String, Any> {
+        return mapOf(
+            "size" to versionCache.size,
+            "entries" to versionCache.keys.toList().take(20)
+        )
+    }
 }

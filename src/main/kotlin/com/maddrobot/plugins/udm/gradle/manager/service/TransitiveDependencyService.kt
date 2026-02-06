@@ -292,6 +292,16 @@ class TransitiveDependencyService(private val project: Project) {
     fun clearCache() {
         dependencyCache.clear()
     }
+
+    /**
+     * Get cache statistics for debugging.
+     */
+    fun getCacheStats(): Map<String, Any> {
+        return mapOf(
+            "size" to dependencyCache.size,
+            "entries" to dependencyCache.keys.toList().take(20)
+        )
+    }
 }
 
 /**
