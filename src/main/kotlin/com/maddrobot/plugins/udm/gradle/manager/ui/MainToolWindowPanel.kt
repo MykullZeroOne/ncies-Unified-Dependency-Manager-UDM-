@@ -16,14 +16,9 @@ import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.components.JBTabbedPane
 import com.intellij.util.ui.JBUI
 import com.maddrobot.plugins.udm.PackageFinderBundle.message
-import com.maddrobot.plugins.udm.gradle.manager.GradlePluginUpdateService
-import com.maddrobot.plugins.udm.gradle.manager.service.PackageMetadataService
+import com.maddrobot.plugins.udm.gradle.manager.service.PackageCacheService
 import com.maddrobot.plugins.udm.gradle.manager.service.PluginLogService
 import com.maddrobot.plugins.udm.gradle.manager.service.RepositoryConfig
-import com.maddrobot.plugins.udm.gradle.manager.service.TransitiveDependencyService
-import com.maddrobot.plugins.udm.gradle.manager.service.VulnerabilityService
-import com.maddrobot.plugins.udm.maven.manager.MavenPluginUpdateService
-import com.maddrobot.plugins.udm.maven.manager.PluginDescriptorService
 import com.maddrobot.plugins.udm.gradle.manager.service.RepositoryConfigWriter
 import com.maddrobot.plugins.udm.gradle.manager.service.RepositoryDiscoveryService
 import com.maddrobot.plugins.udm.gradle.manager.service.RepositorySource
@@ -417,184 +412,89 @@ class MainToolWindowPanel(
 
 
     private fun createCachesPanel(): JPanel {
-        // Cache info data class
-        data class CacheInfo(
-            val name: String,
-            val description: String,
-            var entries: Int,
-            val clearAction: () -> Unit
-        )
+        val cacheService = PackageCacheService.getInstance(project)
 
-        // Get all cache services
-        val metadataService = PackageMetadataService.getInstance(project)
-        val vulnerabilityService = VulnerabilityService.getInstance(project)
-        val transitiveDependencyService = TransitiveDependencyService.getInstance(project)
-        val gradlePluginUpdateService = GradlePluginUpdateService
-        val mavenPluginUpdateService = MavenPluginUpdateService
-        val pluginDescriptorService = PluginDescriptorService.getInstance(project)
-
-        // Define cache entries
-        val caches = mutableListOf<CacheInfo>()
-
-        fun refreshCacheStats() {
-            caches.clear()
-            caches.addAll(listOf(
-                CacheInfo(
-                    "Package Metadata",
-                    "Cached package descriptions, licenses, and homepage URLs",
-                    (metadataService.getCacheStats()["size"] as? Int) ?: 0,
-                    { metadataService.clearCache() }
-                ),
-                CacheInfo(
-                    "Vulnerability Scans",
-                    "Cached OSV vulnerability scan results (1 hour TTL)",
-                    (vulnerabilityService.getCacheStats()["size"] as? Int) ?: 0,
-                    { vulnerabilityService.clearCache() }
-                ),
-                CacheInfo(
-                    "Transitive Dependencies",
-                    "Cached dependency tree lookups from Maven Central",
-                    (transitiveDependencyService.getCacheStats()["size"] as? Int) ?: 0,
-                    { transitiveDependencyService.clearCache() }
-                ),
-                CacheInfo(
-                    "Gradle Plugin Versions",
-                    "Cached latest version lookups from Gradle Plugin Portal (1 hour TTL)",
-                    (gradlePluginUpdateService.getCacheStats()["size"] as? Int) ?: 0,
-                    { gradlePluginUpdateService.clearCache() }
-                ),
-                CacheInfo(
-                    "Maven Plugin Versions",
-                    "Cached latest version lookups from Maven Central (1 hour TTL)",
-                    (mavenPluginUpdateService.getCacheStats()["size"] as? Int) ?: 0,
-                    { mavenPluginUpdateService.clearCache() }
-                ),
-                CacheInfo(
-                    "Plugin Descriptors",
-                    "Cached Gradle plugin descriptors and goal information",
-                    (pluginDescriptorService.getCacheStats()["size"] as? Int) ?: 0,
-                    { pluginDescriptorService.clearCache() }
-                )
-            ))
-        }
-        refreshCacheStats()
-
-        // Create the cache list panel
-        val cacheListPanel = JPanel().apply {
-            layout = BoxLayout(this, BoxLayout.Y_AXIS)
-            border = JBUI.Borders.empty(8)
+        // Stats text area
+        val statsTextArea = JTextArea().apply {
+            isEditable = false
+            font = Font(Font.MONOSPACED, Font.PLAIN, 12)
+            background = JBColor.PanelBackground
+            foreground = JBColor.foreground()
+            text = cacheService.getFormattedSummary()
         }
 
-        // Mutable reference to update function
-        var updateCacheList: (() -> Unit)? = null
-
-        updateCacheList = {
-            refreshCacheStats()
-            cacheListPanel.removeAll()
-
-            var totalEntries = 0
-            for (cache in caches) {
-                totalEntries += cache.entries
-                val cacheRow = JPanel(BorderLayout()).apply {
-                    maximumSize = Dimension(Int.MAX_VALUE, 60)
-                    border = BorderFactory.createCompoundBorder(
-                        BorderFactory.createMatteBorder(0, 0, 1, 0, JBColor.border()),
-                        JBUI.Borders.empty(8)
-                    )
-
-                    // Left: Name and description
-                    val infoPanel = JPanel().apply {
-                        layout = BoxLayout(this, BoxLayout.Y_AXIS)
-                        isOpaque = false
-                        add(JBLabel(cache.name).apply {
-                            font = font.deriveFont(Font.BOLD, 13f)
-                        })
-                        add(JBLabel(cache.description).apply {
-                            foreground = JBColor.GRAY
-                            font = font.deriveFont(11f)
-                        })
-                    }
-
-                    // Right: Entry count and clear button
-                    val actionPanel = JPanel(FlowLayout(FlowLayout.RIGHT, 8, 0)).apply {
-                        isOpaque = false
-                        add(JBLabel("${cache.entries} entries").apply {
-                            foreground = if (cache.entries > 0) JBColor(0x4CAF50, 0x81C784) else JBColor.GRAY
-                            font = font.deriveFont(Font.BOLD)
-                        })
-                        add(JButton("Clear").apply {
-                            icon = AllIcons.Actions.GC
-                            isEnabled = cache.entries > 0
-                            addActionListener {
-                                cache.clearAction()
-                                updateCacheList?.invoke()
-                            }
-                        })
-                    }
-
-                    add(infoPanel, BorderLayout.CENTER)
-                    add(actionPanel, BorderLayout.EAST)
-                }
-                cacheListPanel.add(cacheRow)
-            }
-
-            // Summary row
-            cacheListPanel.add(Box.createVerticalStrut(16))
-            cacheListPanel.add(JPanel(BorderLayout()).apply {
-                maximumSize = Dimension(Int.MAX_VALUE, 40)
-                isOpaque = false
-                add(JBLabel("<html><b>Total cached entries: $totalEntries</b></html>").apply {
-                    border = JBUI.Borders.emptyLeft(8)
-                }, BorderLayout.WEST)
-            })
-
-            cacheListPanel.revalidate()
-            cacheListPanel.repaint()
+        // Function to refresh stats display
+        fun refreshStats() {
+            statsTextArea.text = cacheService.getFormattedSummary()
         }
-
-        // Initial population
-        updateCacheList()
 
         return JPanel(BorderLayout()).apply {
             border = JBUI.Borders.empty(8)
 
-            // Header with info
+            // Header panel with description
             val headerPanel = JPanel(BorderLayout()).apply {
                 border = JBUI.Borders.emptyBottom(12)
-                add(JBLabel("<html><b>Cache Management</b><br>" +
-                    "<font color='gray'>View and clear cached data to free memory or force fresh lookups. " +
-                    "Caches improve performance by avoiding repeated network requests.</font></html>"), BorderLayout.CENTER)
+                add(JBLabel("<html><b>Package Cache</b><br>" +
+                    "<font color='gray'>Caching reduces network calls and improves performance. " +
+                    "Version lookups are cached for 1 hour, search results for 5 minutes.</font></html>"), BorderLayout.CENTER)
             }
+            add(headerPanel, BorderLayout.NORTH)
 
-            // Toolbar
-            val toolbar = JPanel(FlowLayout(FlowLayout.LEFT, 8, 0)).apply {
-                border = JBUI.Borders.emptyBottom(8)
-                add(JButton("Refresh").apply {
+            // Center: Stats display
+            add(JBScrollPane(statsTextArea).apply {
+                border = JBUI.Borders.empty()
+            }, BorderLayout.CENTER)
+
+            // Bottom: Action buttons
+            val buttonPanel = JPanel(FlowLayout(FlowLayout.LEFT, 8, 8)).apply {
+                border = JBUI.Borders.emptyTop(8)
+
+                add(JButton("Refresh Stats").apply {
                     icon = AllIcons.Actions.Refresh
-                    addActionListener { updateCacheList?.invoke() }
+                    addActionListener {
+                        refreshStats()
+                    }
                 })
-                add(JButton("Clear All Caches").apply {
+
+                add(JButton("Clear Version Cache").apply {
                     icon = AllIcons.Actions.GC
+                    toolTipText = "Clear cached version lookups (1 hour TTL)"
+                    addActionListener {
+                        cacheService.clearVersionCache()
+                        refreshStats()
+                        Messages.showInfoMessage(project, "Version cache cleared.", "Cache Cleared")
+                    }
+                })
+
+                add(JButton("Clear Search Cache").apply {
+                    icon = AllIcons.Actions.GC
+                    toolTipText = "Clear cached search results (5 minute TTL)"
+                    addActionListener {
+                        cacheService.clearSearchCache()
+                        refreshStats()
+                        Messages.showInfoMessage(project, "Search cache cleared.", "Cache Cleared")
+                    }
+                })
+
+                add(JButton("Clear All Caches").apply {
+                    icon = AllIcons.Actions.Restart
+                    toolTipText = "Clear all cached data"
                     addActionListener {
                         val result = Messages.showYesNoDialog(
                             project,
-                            "This will clear all cached data. Continue?",
+                            "Are you sure you want to clear all caches?",
                             "Clear All Caches",
                             Messages.getQuestionIcon()
                         )
                         if (result == Messages.YES) {
-                            caches.forEach { it.clearAction() }
-                            updateCacheList?.invoke()
+                            cacheService.clearAll()
+                            refreshStats()
+                            Messages.showInfoMessage(project, "All caches cleared.", "Cache Cleared")
                         }
                     }
                 })
             }
-
-            add(headerPanel, BorderLayout.NORTH)
-            add(JBScrollPane(cacheListPanel).apply {
-                border = JBUI.Borders.empty()
-            }, BorderLayout.CENTER)
-            add(toolbar, BorderLayout.SOUTH)
+            add(buttonPanel, BorderLayout.SOUTH)
         }
     }
 
