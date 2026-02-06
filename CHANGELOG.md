@@ -4,6 +4,23 @@
 
 ## [Unreleased]
 
+## [0.28.0] - 2026-02-06
+
+### Added
+
+- Freemium licensing system with FREE and PREMIUM tiers
+- Hybrid license support: JetBrains Marketplace + direct license keys
+- License key generator for beta, student, friend, and internal licenses
+- Development mode bypass for testing without license
+- Premium feature gates for bulk upgrade, version consolidation, vulnerability scanning
+- License management dialog accessible from Tools menu
+- IDE Starter + Driver framework for UI integration testing
+- Comprehensive UI test suite
+
+### Changed
+
+- Upgraded dependencies for UI testing framework
+
 ## [0.27.0] - 2026-02-04
 
 ### Added
@@ -42,7 +59,8 @@
 
 - Pagination buttons in Gradle plugin search
 
-[Unreleased]: https://github.com/maddrobot/udm/compare/v0.27.0...HEAD
+[Unreleased]: https://github.com/maddrobot/udm/compare/v0.28.0...HEAD
+[0.28.0]: https://github.com/maddrobot/udm/compare/v0.27.0...v0.28.0
 [0.27.0]: https://github.com/maddrobot/udm/compare/v0.26.0...v0.27.0
 [0.26.0]: https://github.com/maddrobot/udm/compare/v0.25.0...v0.26.0
 [0.25.0]: https://github.com/maddrobot/udm/compare/v0.24.2...v0.25.0
