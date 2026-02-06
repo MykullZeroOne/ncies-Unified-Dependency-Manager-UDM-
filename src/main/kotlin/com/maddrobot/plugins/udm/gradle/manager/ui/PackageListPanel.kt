@@ -4,7 +4,7 @@ import com.intellij.icons.AllIcons
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.ActionPlaces
-import com.intellij.openapi.actionSystem.DataContext
+import com.intellij.openapi.actionSystem.impl.SimpleDataContext
 import com.intellij.openapi.project.Project
 import com.maddrobot.plugins.udm.ui.SELECTED_PACKAGE_KEY
 import com.maddrobot.plugins.udm.ui.SELECTED_PACKAGES_KEY
@@ -306,15 +306,10 @@ class PackageListPanel(
         )
 
         // Create a DataContext that includes the selected package data
-        val dataContext = object : DataContext {
-            override fun getData(dataId: String): Any? {
-                return when (dataId) {
-                    SELECTED_PACKAGE_KEY.name -> selectedPackage
-                    SELECTED_PACKAGES_KEY.name -> selectedPackagesList
-                    else -> null
-                }
-            }
-        }
+        val dataContext = SimpleDataContext.builder()
+            .add(SELECTED_PACKAGE_KEY, selectedPackage)
+            .add(SELECTED_PACKAGES_KEY, selectedPackagesList)
+            .build()
 
         val popup = ActionManager.getInstance().createActionPopupMenu(
             ActionPlaces.POPUP,
