@@ -12,6 +12,7 @@ import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.ui.HyperlinkLabel
 import com.intellij.ui.JBColor
+import com.intellij.ui.PopupHandler
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.dsl.builder.*
@@ -234,6 +235,7 @@ class PackageDetailsPanel(
     var onConfigurePluginRequested: ((UnifiedPackage) -> Unit)? = null
     var onExclusionAddRequested: ((UnifiedPackage, DependencyExclusion) -> Unit)? = null
     var onExclusionRemoveRequested: ((UnifiedPackage, DependencyExclusion) -> Unit)? = null
+    var onExclusionAddFromDependencyRequested: ((UnifiedPackage, String) -> Unit)? = null // coordinate string like "group:artifact:version"
 
     private val detailsPanel = JPanel(BorderLayout())
     private val emptyPanel = createEmptyPanel()
@@ -877,6 +879,65 @@ class PackageDetailsPanel(
         loadDependenciesButton.addActionListener {
             loadTransitiveDependencies()
         }
+
+        // Add right-click context menu for adding exclusions
+        dependenciesList.addMouseListener(object : PopupHandler() {
+            override fun invokePopup(comp: Component, x: Int, y: Int) {
+                val index = dependenciesList.locationToIndex(Point(x, y))
+                if (index >= 0) {
+                    val coordinate = dependenciesListModel.getElementAt(index)
+                    // Skip "No dependencies found" message
+                    if (coordinate == message("unified.details.no.dependencies")) return
+
+                    // Ensure clicked item is selected
+                    if (!dependenciesList.isSelectedIndex(index)) {
+                        dependenciesList.selectedIndex = index
+                    }
+
+                    showDependencyContextMenu(comp, x, y, coordinate)
+                }
+            }
+        })
+    }
+
+    /**
+     * Show context menu for a transitive dependency with option to add as exclusion.
+     */
+    private fun showDependencyContextMenu(component: Component, x: Int, y: Int, coordinate: String) {
+        val pkg = selectedPackage ?: return
+
+        // Check if this package supports exclusions
+        val isExclusionCapable = pkg.isInstalled && (
+            pkg.source == PackageSource.GRADLE_INSTALLED ||
+            pkg.source == PackageSource.MAVEN_INSTALLED ||
+            pkg.source == PackageSource.GRADLE_PLUGIN_INSTALLED ||
+            pkg.source == PackageSource.MAVEN_PLUGIN_INSTALLED
+        )
+
+        if (!isExclusionCapable) return
+
+        val popup = JPopupMenu()
+
+        // Parse the coordinate to get group:artifact for display
+        val parts = coordinate.split(":")
+        val displayName = if (parts.size >= 2) "${parts[0]}:${parts[1]}" else coordinate
+
+        val addExclusionItem = JMenuItem("Add \"$displayName\" to Exclusions", AllIcons.Actions.Cancel)
+        addExclusionItem.addActionListener {
+            onExclusionAddFromDependencyRequested?.invoke(pkg, coordinate)
+        }
+        popup.add(addExclusionItem)
+
+        // Add copy coordinate option
+        popup.addSeparator()
+        val copyItem = JMenuItem("Copy Coordinate", AllIcons.Actions.Copy)
+        copyItem.addActionListener {
+            val clipboard = Toolkit.getDefaultToolkit().systemClipboard
+            clipboard.setContents(java.awt.datatransfer.StringSelection(coordinate), null)
+        }
+        popup.add(copyItem)
+
+        popup.show(component, x, y)
     }
 
     private fun setupBuildFilePanel() {

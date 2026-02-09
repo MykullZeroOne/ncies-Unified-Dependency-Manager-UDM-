@@ -371,6 +371,11 @@ class UnifiedDependencyPanel(
             performRemoveExclusion(pkg, exclusion)
         }
 
+        // Handle exclusion from transitive dependency list (right-click on dependency)
+        detailsPanel.onExclusionAddFromDependencyRequested = { pkg, coordinate ->
+            performAddExclusionFromCoordinate(pkg, coordinate)
+        }
+
         // Context menu callbacks for list panel (enables keyboard shortcuts and right-click actions)
         listPanel.contextMenuCallbacks = PackageContextMenuBuilder.ContextMenuCallbacks(
             onInstall = { pkg ->
@@ -417,11 +422,8 @@ class UnifiedDependencyPanel(
                 }
             },
             onManageExclusions = { pkg ->
-                // Open exclusion dialog directly
-                val dialog = ExclusionDialog(project, pkg.id)
-                if (dialog.showAndGet()) {
-                    performAddExclusion(pkg, dialog.getExclusion())
-                }
+                // Open multi-select exclusion dialog with transitive dependencies
+                showManageExclusionsDialog(pkg)
             }
         )
     }
@@ -1906,6 +1908,111 @@ class UnifiedDependencyPanel(
             }
             else -> {
                 uiLog.error("RemoveExclusion: Unsupported metadata type: ${metadata::class.simpleName}", "Exclusion")
+            }
+        }
+    }
+
+    /**
+     * Show the multi-select exclusion dialog with transitive dependencies.
+     * Allows selecting multiple dependencies to exclude at once.
+     */
+    private fun showManageExclusionsDialog(pkg: UnifiedPackage) {
+        // Gate behind Premium license
+        if (!PremiumFeatureGuard.checkOrPrompt(project, Feature.EXCLUSION_MANAGEMENT)) {
+            return
+        }
+
+        val dialog = ManageExclusionsDialog(project, pkg)
+        if (dialog.showAndGet()) {
+            val exclusions = dialog.getSelectedExclusions()
+            if (exclusions.isNotEmpty()) {
+                uiLog.info("ManageExclusions: Adding ${exclusions.size} exclusions to ${pkg.id}", "Exclusion")
+                // Add each exclusion one at a time
+                for (exclusion in exclusions) {
+                    performAddExclusionDirect(pkg, exclusion)
+                }
+                // Refresh once after all exclusions added
+                refresh()
+            }
+        }
+    }
+
+    /**
+     * Add an exclusion from a coordinate string (e.g., "group:artifact:version").
+     * Called when right-clicking on a transitive dependency in the details panel.
+     */
+    private fun performAddExclusionFromCoordinate(pkg: UnifiedPackage, coordinate: String) {
+        // Gate behind Premium license
+        if (!PremiumFeatureGuard.checkOrPrompt(project, Feature.EXCLUSION_MANAGEMENT)) {
+            return
+        }
+
+        // Parse coordinate: "groupId:artifactId:version" or "groupId:artifactId:version (scope)"
+        val parts = coordinate.split(":")
+        if (parts.size < 2) {
+            uiLog.error("AddExclusionFromCoordinate: Invalid coordinate format: $coordinate", "Exclusion")
+            return
+        }
+
+        val groupId = parts[0]
+        // Artifact might have scope suffix like "1.0 (compile)" - strip it
+        val artifactId = parts[1].split(" ").first()
+
+        val exclusion = DependencyExclusion(groupId, artifactId)
+        performAddExclusion(pkg, exclusion)
+    }
+
+    /**
+     * Add an exclusion without refresh (for batch operations).
+     */
+    private fun performAddExclusionDirect(pkg: UnifiedPackage, exclusion: DependencyExclusion) {
+        val metadata = pkg.metadata
+
+        uiLog.info("AddExclusionDirect: Adding ${exclusion.id} to ${pkg.id}", "Exclusion")
+
+        when (metadata) {
+            is PackageMetadata.GradleMetadata -> {
+                val installed = gradleDependencyService.installedDependencies.find {
+                    it.groupId == pkg.publisher && it.artifactId == pkg.name
+                }
+                if (installed == null) {
+                    uiLog.error("AddExclusionDirect: Could not find ${pkg.id} in installed dependencies", "Exclusion")
+                    return
+                }
+
+                val virtualFile = LocalFileSystem.getInstance().findFileByPath(installed.buildFile) ?: return
+                virtualFile.refresh(false, false)
+                val newContent = gradleModifier.getContentWithExclusionAdded(installed, exclusion)
+                if (newContent == null) {
+                    uiLog.error("AddExclusionDirect: Failed to generate content with exclusion", "Exclusion")
+                    return
+                }
+
+                gradleModifier.applyChanges(installed, newContent, "Add Exclusion: ${exclusion.id}")
+                uiLog.info("AddExclusionDirect: Successfully added ${exclusion.id} to ${pkg.id}", "Exclusion")
+            }
+            is PackageMetadata.MavenInstalledMetadata -> {
+                val installed = mavenInstalledDependencies.find {
+                    it.groupId == pkg.publisher && it.artifactId == pkg.name
+                }
+                if (installed == null) {
+                    uiLog.error("AddExclusionDirect: Could not find ${pkg.id} in Maven installed dependencies", "Exclusion")
+                    return
+                }
+
+                val virtualFile = LocalFileSystem.getInstance().findFileByPath(installed.pomFile) ?: return
+                virtualFile.refresh(false, false)
+                val newContent = mavenModifier.getContentWithExclusionAdded(installed, exclusion)
+                if (newContent == null) {
+                    uiLog.error("AddExclusionDirect: Failed to generate content with exclusion", "Exclusion")
+                    return
+                }
+
+                mavenModifier.applyChanges(installed, newContent, "Add Exclusion: ${exclusion.id}")
+                uiLog.info("AddExclusionDirect: Successfully added ${exclusion.id} to ${pkg.id}", "Exclusion")
+            }
+            else -> {
+                uiLog.error("AddExclusionDirect: Unsupported metadata type: ${metadata::class.simpleName}", "Exclusion")
             }
         }
     }
