@@ -1,8 +1,31 @@
 <!-- Keep a Changelog guide -> https://keepachangelog.com -->
 
-# Unified Dependency Manager (UDP) Changelog
+# Unified Dependency Manager (UDM) Changelog
 
 ## [Unreleased]
+
+## [1.0.0] - 2026-02-13
+
+### Added
+
+- Exclusion suggestion engine with bundled rules for known problematic dependencies
+- Dynamic conflict detection across transitive dependencies
+- License management section in Settings panel (activate/deactivate direct keys)
+- Dependency resolve support (mvn dependency:resolve / gradlew dependencies) from exclusion dialog
+- New tests for GradleDependencyModifier, GradleDependencyScanner, RepositoryConfigWriter
+
+### Changed
+
+- All UI strings externalized to i18n resource bundle (100+ keys added)
+- Plugin.xml action tags now use bundle keys instead of hardcoded text/description
+- Removed obsolete Maven/Nexus settings from Settings panel (handled by Repositories tab)
+- Platform compatibility upgraded to IntelliJ 2025.3.2
+- Plugin name corrected from UDP to UDM throughout
+
+### Fixed
+
+- Eliminated all non-null assertions (!!) from production code
+- ModalityState handling for callbacks in modal dialogs
 
 ## [0.28.0] - 2026-02-06
 
@@ -59,7 +82,8 @@
 
 - Pagination buttons in Gradle plugin search
 
-[Unreleased]: https://github.com/maddrobot/udm/compare/v0.28.0...HEAD
+[Unreleased]: https://github.com/maddrobot/udm/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/maddrobot/udm/compare/v0.28.0...v1.0.0
 [0.28.0]: https://github.com/maddrobot/udm/compare/v0.27.0...v0.28.0
 [0.27.0]: https://github.com/maddrobot/udm/compare/v0.26.0...v0.27.0
 [0.26.0]: https://github.com/maddrobot/udm/compare/v0.25.0...v0.26.0
