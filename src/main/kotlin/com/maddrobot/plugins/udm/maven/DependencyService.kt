@@ -5,7 +5,7 @@ import kotlinx.serialization.json.Json
 import com.maddrobot.plugins.udm.setting.PackageFinderSetting
 import com.maddrobot.plugins.udm.util.HttpRequestHelper
 import com.maddrobot.plugins.udm.util.showDialogWithConfigButton
-import com.maddrobot.plugins.udm.util.showErrorDialog
+import com.maddrobot.plugins.udm.util.showInformationNotification
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 
@@ -26,7 +26,8 @@ object DependencyService {
         return when (result) {
             is HttpRequestHelper.RequestResult.Success -> result.data
             is HttpRequestHelper.RequestResult.Error -> {
-                showErrorDialog(result.exception.localizedMessage)
+                log.warn("Maven Central search failed: ${result.exception.message}")
+                showInformationNotification("Maven Central search failed: ${result.exception.localizedMessage}")
                 emptyList()
             }
         }

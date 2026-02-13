@@ -7,6 +7,7 @@ import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.ActionPlaces
 import com.intellij.openapi.actionSystem.ActionToolbar
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.project.Project
@@ -592,6 +593,10 @@ class UnifiedDependencyPanel(
                 if (newCount != previousCount) {
                     uiLog.info("Maven Refresh: Dependency count changed from $previousCount to $newCount", "Refresh")
                 }
+                
+                // Fetch updates in background thread to populate caches
+                uiLog.debug("Maven Refresh: Checking for updates in background", "Refresh")
+                getAllInstalledPackages(true)
 
                 ApplicationManager.getApplication().invokeLater {
                     updateModuleSelector()
@@ -669,7 +674,7 @@ class UnifiedDependencyPanel(
         }
     }
 
-    private fun getAllInstalledPackages(): List<UnifiedPackage> {
+    private fun getAllInstalledPackages(checkUpdates: Boolean = false): List<UnifiedPackage> {
         val packages = mutableListOf<UnifiedPackage>()
 
         // Add Gradle dependencies
@@ -681,17 +686,19 @@ class UnifiedDependencyPanel(
                 )
             )
 
-            // Add Gradle plugins (scan separately from update check for resilience)
+            // Add Gradle plugins
             try {
                 val gradlePlugins = gradlePluginScanner.scanInstalledPlugins()
                 uiLog.debug("Found ${gradlePlugins.size} Gradle plugins", "Plugins")
 
-                val pluginUpdates = try {
-                    GradlePluginUpdateService.checkForUpdates(gradlePlugins)
-                } catch (e: Exception) {
-                    log.warn("Failed to check Gradle plugin updates", e)
-                    emptyList()
-                }
+                val pluginUpdates = if (checkUpdates) {
+                    try {
+                        GradlePluginUpdateService.checkForUpdates(gradlePlugins)
+                    } catch (e: Exception) {
+                        log.warn("Failed to check Gradle plugin updates", e)
+                        emptyList()
+                    }
+                } else emptyList()
 
                 packages.addAll(
                     PackageAdapters.aggregatePluginsByPackage(gradlePlugins, pluginUpdates)
@@ -706,31 +713,35 @@ class UnifiedDependencyPanel(
             uiLog.debug("Maven project detected, scanning dependencies and plugins...", "Plugins")
 
             // Check for updates on Maven dependencies
-            val mavenDependencyVersions = try {
-                mavenInstalledDependencies.associate { dep ->
-                    val latestVersion = MavenPluginUpdateService.getLatestVersion(dep.groupId, dep.artifactId)
-                    dep.id to latestVersion
-                }.mapNotNull { (key, value) -> value?.let { key to it } }.toMap()
-            } catch (e: Exception) {
-                log.warn("Failed to check Maven dependency updates", e)
-                emptyMap()
-            }
+            val mavenDependencyVersions = if (checkUpdates) {
+                try {
+                    mavenInstalledDependencies.associate { dep ->
+                        val latestVersion = MavenPluginUpdateService.getLatestVersion(dep.groupId, dep.artifactId)
+                        dep.id to latestVersion
+                    }.mapNotNull { (key, value) -> value?.let { key to it } }.toMap()
+                } catch (e: Exception) {
+                    log.warn("Failed to check Maven dependency updates", e)
+                    emptyMap()
+                }
+            } else emptyMap()
 
             packages.addAll(
                 PackageAdapters.aggregateMavenByPackage(mavenInstalledDependencies, mavenDependencyVersions)
             )
 
-            // Add Maven plugins (scan separately from update check for resilience)
+            // Add Maven plugins
             try {
                 val mavenPlugins = mavenPluginScanner.scanInstalledPlugins()
                 uiLog.debug("Found ${mavenPlugins.size} Maven plugins", "Plugins")
 
-                val pluginUpdates = try {
-                    MavenPluginUpdateService.checkForUpdates(mavenPlugins)
-                } catch (e: Exception) {
-                    log.warn("Failed to check Maven plugin updates", e)
-                    emptyList()
-                }
+                val pluginUpdates = if (checkUpdates) {
+                    try {
+                        MavenPluginUpdateService.checkForUpdates(mavenPlugins)
+                    } catch (e: Exception) {
+                        log.warn("Failed to check Maven plugin updates", e)
+                        emptyList()
+                    }
+                } else emptyList()
 
                 packages.addAll(
                     PackageAdapters.aggregateMavenPluginsByPackage(mavenPlugins, pluginUpdates)
@@ -871,31 +882,12 @@ class UnifiedDependencyPanel(
 
         ApplicationManager.getApplication().executeOnPooledThread {
             try {
-                val searchResults = when {
-                    isAllRepos -> {
-                        // Search all repositories and combine results
-                        searchAllRepositories(query)
-                    }
-
-                    selectedRepo != null -> {
-                        searchInRepository(query, selectedRepo)
-                    }
-
-                    else -> {
-                        // Fallback: If no repo selected but we have searchable repos, search all
-                        if (searchableRepos.isNotEmpty()) {
-                            uiLog.warn(
-                                "No repo selected, falling back to searching all ${searchableRepos.size} repos",
-                                "Search"
-                            )
-                            searchAllRepositories(query)
-                        } else {
-                            // Last resort: search Maven Central directly
-                            uiLog.warn("No repositories configured, falling back to Maven Central only", "Search")
-                            DependencyService.searchFromMavenCentral(query)
-                                .map { PackageAdapters.fromDependency(it, PackageSource.MAVEN_CENTRAL) }
-                        }
-                    }
+                val searchResults = if (isAllRepos) {
+                    // Search all repositories and combine results
+                    searchAllRepositories(query)
+                } else {
+                    // selectedRepo is non-null if isAllRepos is false
+                    searchInRepository(query, selectedRepo)
                 }
 
                 // Get all installed packages
@@ -2639,60 +2631,150 @@ class UnifiedDependencyPanel(
      * Show the bulk upgrade dialog for upgrading multiple packages at once.
      */
     private fun showBulkUpgradeDialog() {
-        val packagesWithUpdates = if (isGradleProject) {
-            gradleDependencyService.dependencyUpdates.map { update ->
-                PackageAdapters.fromInstalledDependency(update.installed, update)
-            }
-        } else emptyList()
+        val packagesWithUpdates = mutableListOf<UnifiedPackage>()
 
-        if (packagesWithUpdates.isEmpty()) {
-            com.intellij.openapi.ui.Messages.showInfoMessage(
-                project,
-                "All packages are up to date.",
-                "No Updates Available"
-            )
-            return
-        }
+        com.intellij.openapi.progress.ProgressManager.getInstance().run(object : com.intellij.openapi.progress.Task.Modal(project, "Checking for updates", false) {
+            override fun run(indicator: com.intellij.openapi.progress.ProgressIndicator) {
+                indicator.isIndeterminate = true
+                indicator.text = "Checking for available updates..."
 
-        val dialog = BulkUpgradeDialog(project, packagesWithUpdates)
-        if (dialog.showAndGet()) {
-            val selectedPackages = dialog.getSelectedPackages()
-            uiLog.info("Bulk upgrade: ${selectedPackages.size} packages selected", "BulkUpgrade")
+                if (isGradleProject) {
+                    packagesWithUpdates.addAll(gradleDependencyService.dependencyUpdates.map { update ->
+                        PackageAdapters.fromInstalledDependency(update.installed, update)
+                    })
+                }
 
-            // Perform updates for each selected package
-            for (pkg in selectedPackages) {
-                val newVersion = pkg.latestVersion ?: continue
-                val metadata = pkg.metadata
-
-                when (metadata) {
-                    is PackageMetadata.GradleMetadata -> {
-                        val installed = gradleDependencyService.installedDependencies.find {
-                            it.groupId == pkg.publisher && it.artifactId == pkg.name
-                        }
-                        if (installed != null) {
-                            val virtualFile = LocalFileSystem.getInstance().findFileByPath(installed.buildFile)
-                            val document = virtualFile?.let { FileDocumentManager.getInstance().getDocument(it) }
-                            if (document != null) {
-                                val newContent = gradleModifier.getUpdatedContent(installed, newVersion)
-                                if (newContent != null) {
-                                    gradleModifier.applyChanges(installed, newContent, "Bulk Update: ${pkg.id}")
-                                }
-                            }
-                        }
-                    }
-
-                    else -> {
-                        uiLog.warn(
-                            "Bulk upgrade not implemented for metadata type: ${metadata::class.simpleName}",
-                            "BulkUpgrade"
-                        )
-                    }
+                if (isMavenProject) {
+                    // Include Maven dependencies and plugins that have updates
+                    val installedPackages = getAllInstalledPackages(true)
+                    packagesWithUpdates.addAll(installedPackages.filter {
+                        it.isInstalled && it.latestVersion != null && it.latestVersion != it.installedVersion
+                    })
                 }
             }
 
-            // Refresh after all updates
-            refresh()
-        }
+            override fun onSuccess() {
+                if (packagesWithUpdates.isEmpty()) {
+                    com.intellij.openapi.ui.Messages.showInfoMessage(
+                        project,
+                        "All packages are up to date.",
+                        "No Updates Available"
+                    )
+                    return
+                }
+
+                val dialog = BulkUpgradeDialog(project, packagesWithUpdates)
+                if (dialog.showAndGet()) {
+                    val selectedPackages = dialog.getSelectedPackages()
+                    if (selectedPackages.isEmpty()) return
+
+                    uiLog.info("Bulk upgrade: ${selectedPackages.size} packages selected", "BulkUpgrade")
+
+                    // Perform updates for each selected package in a single background task
+                    com.intellij.openapi.progress.ProgressManager.getInstance().run(object : com.intellij.openapi.progress.Task.Backgroundable(project, "Applying updates", false) {
+                        override fun run(indicator: com.intellij.openapi.progress.ProgressIndicator) {
+                            indicator.isIndeterminate = false
+                            val total = selectedPackages.size
+                            
+                            WriteCommandAction.runWriteCommandAction(project, "Bulk Upgrade", null, {
+                                for ((index, pkg) in selectedPackages.withIndex()) {
+                                    indicator.fraction = index.toDouble() / total
+                                    indicator.text = "Updating ${pkg.id}..."
+                                    
+                                    val newVersion = pkg.latestVersion ?: continue
+                                    val metadata = pkg.metadata
+
+                                    when (metadata) {
+                                        is PackageMetadata.GradleMetadata -> {
+                                            val installed = gradleDependencyService.installedDependencies.find {
+                                                it.groupId == pkg.publisher && it.artifactId == pkg.name
+                                            }
+                                            if (installed != null) {
+                                                val virtualFile = LocalFileSystem.getInstance().findFileByPath(installed.buildFile)
+                                                val document = virtualFile?.let { FileDocumentManager.getInstance().getDocument(it) }
+                                                if (document != null) {
+                                                    val newContent = gradleModifier.getUpdatedContent(installed, newVersion)
+                                                    if (newContent != null) {
+                                                        document.setText(newContent)
+                                                        FileDocumentManager.getInstance().saveDocument(document)
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        is PackageMetadata.MavenInstalledMetadata -> {
+                                            val installed = mavenInstalledDependencies.find {
+                                                it.groupId == pkg.publisher && it.artifactId == pkg.name
+                                            }
+                                            if (installed != null) {
+                                                val virtualFile = LocalFileSystem.getInstance().findFileByPath(installed.pomFile)
+                                                val document = virtualFile?.let { FileDocumentManager.getInstance().getDocument(it) }
+                                                if (document != null) {
+                                                    val newContent = mavenModifier.getUpdatedContent(installed, newVersion)
+                                                    if (newContent != null) {
+                                                        document.setText(newContent)
+                                                        FileDocumentManager.getInstance().saveDocument(document)
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        is PackageMetadata.GradlePluginMetadata -> {
+                                            val virtualFile = LocalFileSystem.getInstance().findFileByPath(metadata.buildFile)
+                                            val document = virtualFile?.let { FileDocumentManager.getInstance().getDocument(it) }
+                                            if (document != null) {
+                                                val installedPlugin = InstalledPlugin(
+                                                    pluginId = pkg.name,
+                                                    version = pkg.installedVersion,
+                                                    moduleName = pkg.modules.firstOrNull() ?: "root",
+                                                    buildFile = metadata.buildFile,
+                                                    offset = metadata.offset,
+                                                    length = metadata.length,
+                                                    pluginSyntax = metadata.pluginSyntax,
+                                                    isKotlinShorthand = metadata.isKotlinShorthand,
+                                                    isApplied = metadata.isApplied
+                                                )
+                                                val newContent = gradlePluginModifier.getUpdatedContent(installedPlugin, newVersion)
+                                                if (newContent != null) {
+                                                    document.setText(newContent)
+                                                    FileDocumentManager.getInstance().saveDocument(document)
+                                                }
+                                            }
+                                        }
+
+                                        is PackageMetadata.MavenPluginMetadata -> {
+                                            val virtualFile = LocalFileSystem.getInstance().findFileByPath(metadata.pomFile)
+                                            val document = virtualFile?.let { FileDocumentManager.getInstance().getDocument(it) }
+                                            if (document != null) {
+                                                val installedPlugin = MavenInstalledPlugin(
+                                                    groupId = pkg.publisher,
+                                                    artifactId = pkg.name,
+                                                    version = pkg.installedVersion,
+                                                    moduleName = pkg.modules.firstOrNull() ?: "root",
+                                                    pomFile = metadata.pomFile,
+                                                    offset = metadata.offset,
+                                                    length = metadata.length
+                                                )
+                                                val newContent = mavenPluginModifier.getUpdatedContent(installedPlugin, newVersion)
+                                                if (newContent != null) {
+                                                    document.setText(newContent)
+                                                    FileDocumentManager.getInstance().saveDocument(document)
+                                                }
+                                            }
+                                        }
+                                        else -> {}
+                                    }
+                                }
+                            })
+                        }
+
+                        override fun onSuccess() {
+                            refresh()
+                        }
+                    })
+                }
+            }
+        })
     }
 
     /**

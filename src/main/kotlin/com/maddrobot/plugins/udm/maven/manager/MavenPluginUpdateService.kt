@@ -16,7 +16,7 @@ object MavenPluginUpdateService {
     private val gson = Gson()
 
     private const val MAVEN_CENTRAL_SEARCH_URL = "https://search.maven.org/solrsearch/select"
-    private const val TIMEOUT_MS = 10_000
+    private const val TIMEOUT_MS = 30_000
 
     // Cache for plugin versions (pluginId -> latestVersion)
     private val versionCache = ConcurrentHashMap<String, CachedVersion>()

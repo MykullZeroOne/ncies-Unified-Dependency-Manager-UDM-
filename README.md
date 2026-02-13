@@ -4,123 +4,134 @@
     </a>
 </div>
 <h1 align="center">Unified Dependency Manager (UDM)</h1>
-<p align="center">IntelliJ plugin for searching, installing, and managing dependencies across Maven, Gradle, and NPM</p>
+<p align="center"><b>NuGet-style dependency management for IntelliJ IDEA</b><br>Search, install, update, and secure your dependencies across Maven, Gradle, and NPM &mdash; without leaving your IDE.</p>
 
 <p align="center">
-<a href="https://github.com/maddrobot/udm"><img src="https://img.shields.io/badge/GitHub-maddrobot%2Fudm-blue?style=flat-square&logo=github" alt="GitHub"></a>
+<a href="https://plugins.jetbrains.com/plugin/XXXXX"><img src="https://img.shields.io/badge/JetBrains_Marketplace-UDM-blueviolet?style=flat-square&logo=jetbrains" alt="JetBrains Marketplace"></a>
 <a href="https://github.com/maddrobot/udm/releases"><img src="https://img.shields.io/github/v/release/maddrobot/udm?style=flat-square" alt="release"></a>
+<a href="https://github.com/maddrobot/udm"><img src="https://img.shields.io/badge/GitHub-maddrobot%2Fudm-blue?style=flat-square&logo=github" alt="GitHub"></a>
 </p>
 <br>
 
-
-- [Installation](#Installation)
-- [Search from Maven Central](#search-from-maven-central)
-- [Explore Local Maven Repository](#explore-local-maven-repository)
-- [Search Private Nexus Repository](#search-private-nexus-repository)
-- [Gradle Plugin Search](#gradle-plugin-search)
-- [NPM Package Search](#npm-package-search)
-
 <!-- Plugin description -->
 
-A unified interface for searching, installing, updating, and removing dependencies across Maven Central, Nexus, Gradle Plugin Portal, and NPM — directly inside your IDE.
+**The dependency manager IntelliJ has been missing.** If you've ever wished for a NuGet-style package manager inside your JetBrains IDE, UDM is built for you.
 
-Instead of switching between browser tabs and manually editing build files, UDM provides a NuGet-style dependency management experience for JVM and Node.js projects. View installed packages, check for updates, scan for vulnerabilities, and apply changes with preview diffs — all from a single tool window.
+Stop juggling browser tabs, copy-pasting coordinates, and hand-editing build files. UDM gives you a single tool window to **search, install, update, and remove** dependencies across five package ecosystems &mdash; with preview diffs, vulnerability scanning, and one-click bulk upgrades.
 
-**Features**
+---
 
-* **Dependency Management UI** — Browse installed dependencies, check for available updates, and apply upgrades with a single click. Preview diffs before any build file modification.
-* **Maven Central Search** — Search by artifact, group, or `group:artifact`. Double-click to copy a ready-to-use declaration. Right-click to download JARs, sources, or POMs.
-* **Local Maven Repository** — Explore your `~/.m2/repository` and copy dependency coordinates instantly.
-* **Nexus Private Repository** — Connect to your organization's Nexus server and search private artifacts.
-* **Gradle Plugin Portal** — Search plugins by tag or keyword.
-* **NPM Registry** — Search npm packages and copy install commands for npm, yarn, or pnpm.
-* **Multi-Module Support** — Scans all modules in your project and tracks which module owns each dependency.
-* **Vulnerability Scanning** — Detect known security vulnerabilities in your dependencies using the GitHub Advisory Database.
-* **Bulk Operations** — Upgrade all outdated dependencies at once, consolidate inconsistent versions across modules, and manage dependency exclusions.
+### Why UDM?
 
-**Getting Started**
+* **See everything at a glance** &mdash; Installed packages show current version alongside the latest available, color-coded so outdated dependencies jump out instantly.
+* **Update with confidence** &mdash; Every build file change shows a preview diff before it's applied. No surprises, full undo support.
+* **Five ecosystems, one window** &mdash; Maven Central, local Maven repos, Nexus/Artifactory, Gradle Plugin Portal, and NPM. Search them all from one place.
+* **Stay secure** &mdash; Vulnerability scanning powered by the GitHub Advisory Database flags known CVEs in your dependency tree.
+* **Multi-module aware** &mdash; Scans every module in your project and tracks exactly which build file owns each dependency.
 
-1. Install the plugin from the JetBrains Marketplace or from a ZIP via **Settings > Plugins > Install Plugin from Disk**.
-2. Open the **Unified Dependency Manager** tool window (bottom panel).
-3. Browse your installed dependencies, search for new packages, or check for updates.
-4. Configure Nexus or vulnerability scanning under **Settings > Tools > Unified Dependency Manager**.
+---
+
+### Core Features (Free)
+
+* **Installed Packages view** &mdash; Browse all dependencies across all modules with version badges, update indicators, and filtering.
+* **Maven Central search** &mdash; Search by artifact, group, or `group:artifact`. Double-click to copy a ready-to-use Gradle or Maven declaration.
+* **Local Maven repository browser** &mdash; Explore `~/.m2/repository` and copy coordinates instantly.
+* **Nexus &amp; Artifactory** &mdash; Connect to private repositories and search your organization's internal artifacts.
+* **Gradle Plugin Portal** &mdash; Search plugins by keyword or tag.
+* **NPM Registry** &mdash; Search npm packages and copy install commands for npm, yarn, or pnpm.
+* **Repository discovery** &mdash; Automatically detects repositories from your `settings.gradle`, `build.gradle`, `pom.xml`, and Maven `settings.xml` &mdash; including credentials.
+* **One-click updates** &mdash; Select a dependency, pick a version, preview the diff, and apply.
+
+### Premium Features
+
+* **Bulk upgrade** &mdash; Update all outdated dependencies in a single operation.
+* **Version consolidation** &mdash; Find packages with inconsistent versions across modules and unify them in one step.
+* **Vulnerability scanning** &mdash; Scan your dependency tree against the GitHub Advisory Database and see severity-ranked results.
+* **Exclusion suggestions** &mdash; Automatically detect transitive dependency conflicts and known-problematic libraries, with one-click exclusion management.
+
+---
+
+### Getting Started
+
+1. Install UDM from the **JetBrains Marketplace** (or from a ZIP via Settings > Plugins > Install Plugin from Disk).
+2. Open the **Unified Dependency Manager** tool window from the bottom panel.
+3. You'll see your installed packages immediately. Search, update, or explore from there.
+
+Works with **IntelliJ IDEA 2024.2+** (Community and Ultimate).
 
 <!-- Plugin description end -->
 
-**Compatible with version: 2024.2 or later**
+---
+
+## Screenshots
+
+### Installed Packages &mdash; Everything at a Glance
+
+See all your dependencies with version badges, update indicators, and a detail panel showing description, publisher, homepage, scope, and module. Outdated packages are grouped under "Updates Available" so they stand out immediately.
+
+![Installed packages with detail panel](screenshots/01_installed_packages.png)
+
+### Install New Packages &mdash; One Click
+
+Browse available packages, view metadata, and install directly into your build file. No copy-pasting coordinates.
+
+![Install a new package](screenshots/02_install_package.png)
+
+### Search Across All Repositories
+
+Search Maven Central, Nexus, Artifactory, or any configured repository. Results show version, description, and publisher &mdash; select a package to see full details and install from the repository of your choice.
+
+![Search results with install](screenshots/03_search_packages.png)
+
+### Auto-Discovered Repositories
+
+UDM reads your `settings.gradle`, `build.gradle`, `pom.xml`, and Maven `settings.xml` to discover every configured repository &mdash; including private ones with credentials.
+
+![Repositories tab with auto-discovered repos](screenshots/04_repositories.png)
+
+### Add Repositories &mdash; Save Anywhere
+
+Add new repositories and choose where to persist them: Gradle build files, Maven global settings, or plugin-only.
+
+![Add Repository dialog](screenshots/05_add_repository.png)
+
+### Built-In Cache Management
+
+Monitor cache hit rates and clear version, search, or metadata caches independently. Caching reduces network calls and keeps the UI responsive.
+
+![Caches tab with statistics](screenshots/06_caches.png)
+
+---
 
 ## Installation
 
-Install from [GitHub Releases](https://github.com/maddrobot/udm/releases):
+**From JetBrains Marketplace** (recommended):
 
-> Download the ZIP package from the [Releases](https://github.com/maddrobot/udm/releases) page
-> and install it manually via **Plugins > Install Plugin from Disk...**.
+> Open **Settings > Plugins > Marketplace**, search for "Unified Dependency Manager", and click **Install**.
 
-## Search from Maven Central
+**From GitHub Releases**:
 
-- Search by artifact, group, or group:artifact format
-- **Double-click** to copy ready-to-use dependency declaration
-- **Right-click** to download JAR/sources/POM
+> Download the ZIP from the [Releases](https://github.com/maddrobot/udm/releases) page and install via **Settings > Plugins > Install Plugin from Disk**.
 
-search by artifact name
+## Compatibility
 
-![search by artifact](screenshots/Screenshot_20250718_143725.png)
+| IDE | Supported Versions |
+|-----|-------------------|
+| IntelliJ IDEA (Community & Ultimate) | 2024.2 &ndash; 2025.3+ |
 
-search by group
+Requires bundled plugins: Java, Gradle, Kotlin, and Groovy.
 
-![search by group](screenshots/Screenshot_20250718_144400.png)
+## Changelog
 
-search by group and artifact
-
-![search by group and artifact](screenshots/Screenshot_20250718_144454.png)
-
-## Explore Local Maven Repository
-
-- Switch to **Local Repository** tab
-- **Double-click** to copy dependency
-- **Right-click > Show in Explorer**
-
-![](screenshots/Screenshot_20250718_144540.png)
-
-## Search Private Nexus Repository
-
-- Configure Nexus URL in plugin's settings: <kbd>Settings</kbd> > <kbd>Tools</kbd> > <kbd>Unified Dependency Manager</kbd>
-- Search your private repository *(requires Nexus server to allow anonymous search API access)*
-
-![](screenshots/Screenshot_20250721_153735.png)
-![](screenshots/Screenshot_20250718_144819.png)
-![](screenshots/Screenshot_20250718_144842.png)
-
-## Gradle Plugin Search
-
-Search by tag or keywords
-
-![](screenshots/Screenshot_20250718_145254.png)
-
-## NPM Package Search
-
-- Search npm packages
-- **Double-click** to copy install command (supports npm/yarn/pnpm)
-
-![](screenshots/Screenshot_20250718_145149.png)
-
-## Change log
-
-Please see [CHANGELOG](CHANGELOG.md) for more information what has changed recently.
-
-## Compatibility Notes
-
-- Supported: IntelliJ IDEA 242.0 - 252.*
-- Incompatible:
-    - Versions <= 241 (Missing `HttpConnectionUtils` class)
-    - Versions <= 233 (API changes in `TextComponentEmptyText` and `HttpConnectionUtils`)
+See [CHANGELOG.md](CHANGELOG.md) for release history.
 
 ## License
 
-Please see [LICENSE](LICENSE) for details.
+See [LICENSE](LICENSE) for details.
 
 ## Links
 
+- **JetBrains Marketplace**: *Coming soon*
 - **GitHub**: https://github.com/maddrobot/udm
 - **Issues**: https://github.com/maddrobot/udm/issues
 - **Releases**: https://github.com/maddrobot/udm/releases

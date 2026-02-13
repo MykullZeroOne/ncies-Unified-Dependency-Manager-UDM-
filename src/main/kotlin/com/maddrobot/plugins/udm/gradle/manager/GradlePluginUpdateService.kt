@@ -15,7 +15,7 @@ object GradlePluginUpdateService {
     private const val GRADLE_PLUGIN_PORTAL_URL = "https://plugins.gradle.org/plugin"
     private const val USER_AGENT =
         "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36"
-    private const val TIMEOUT_MS = 10_000
+    private const val TIMEOUT_MS = 30_000
 
     // Cache for plugin versions (pluginId -> latestVersion)
     private val versionCache = ConcurrentHashMap<String, CachedVersion>()

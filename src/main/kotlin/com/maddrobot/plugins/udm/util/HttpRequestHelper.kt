@@ -11,9 +11,8 @@ import java.util.Base64
  */
 object HttpRequestHelper {
 
-    private const val CONNECT_TIMEOUT: Int = 10_000
-
-    private const val READ_TIMEOUT: Int = 10_000
+    private const val CONNECT_TIMEOUT: Int = 30_000
+    private const val READ_TIMEOUT: Int = 30_000
 
     sealed class RequestResult<out T> {
         data class Success<out T>(val data: T) : RequestResult<T>()

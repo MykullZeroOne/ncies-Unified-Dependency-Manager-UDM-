@@ -4,7 +4,7 @@ import com.intellij.openapi.diagnostic.Logger
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
-import com.maddrobot.plugins.udm.util.showErrorDialog
+import com.maddrobot.plugins.udm.util.showInformationNotification
 import java.io.IOException
 
 /**
@@ -43,11 +43,11 @@ object GradlePluginPortalService {
         val document: Document = try {
             Jsoup.connect(url)
                 .userAgent(USER_AGENT)
-                .timeout(10_000)
+                .timeout(30_000)
                 .get()
         } catch (e: IOException) {
-            log.error("Failed to load gradle plugin page data", e)
-            showErrorDialog(e.localizedMessage)
+            log.warn("Failed to load gradle plugin page data: ${e.message}")
+            showInformationNotification("Gradle Plugin Portal search failed: ${e.localizedMessage}")
             return Triple(emptyList(), "", "")
         }
 

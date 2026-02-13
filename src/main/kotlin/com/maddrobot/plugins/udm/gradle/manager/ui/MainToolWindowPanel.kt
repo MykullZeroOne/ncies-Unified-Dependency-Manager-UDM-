@@ -4,6 +4,7 @@ import com.intellij.icons.AllIcons
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.*
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.ui.SimpleToolWindowPanel
@@ -219,10 +220,18 @@ class MainToolWindowPanel(
             selectionMode = ListSelectionModel.SINGLE_SELECTION
         }
 
-        // Load repositories
+        // Load repositories (off EDT to avoid SlowOperations violation from VFS/PSI access)
         fun loadRepositories() {
             repositoryListModel.clear()
-            discoveryService.getConfiguredRepositories().forEach { repositoryListModel.addElement(it) }
+            ApplicationManager.getApplication().executeOnPooledThread {
+                val repos = ReadAction.compute<List<RepositoryConfig>, Throwable> {
+                    discoveryService.getConfiguredRepositories()
+                }
+                ApplicationManager.getApplication().invokeLater {
+                    repositoryListModel.clear()
+                    repos.forEach { repositoryListModel.addElement(it) }
+                }
+            }
         }
 
         // Test connection

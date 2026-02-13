@@ -2,7 +2,7 @@ package com.maddrobot.plugins.udm.npm
 
 import kotlinx.serialization.json.Json
 import com.maddrobot.plugins.udm.util.HttpRequestHelper
-import com.maddrobot.plugins.udm.util.showErrorDialog
+import com.maddrobot.plugins.udm.util.showInformationNotification
 
 /**
  * Provides services for interacting with the NPM Registry.
@@ -32,7 +32,7 @@ object NpmRegistryService {
             }
 
             is HttpRequestHelper.RequestResult.Error -> {
-                showErrorDialog(result.exception.localizedMessage)
+                showInformationNotification("NPM Registry search failed: ${result.exception.localizedMessage}")
                 emptyList()
             }
         }
