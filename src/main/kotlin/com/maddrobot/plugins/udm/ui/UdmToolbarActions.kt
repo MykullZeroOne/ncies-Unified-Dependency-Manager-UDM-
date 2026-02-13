@@ -317,6 +317,39 @@ class ConsolidateAction(
     }
 }
 
+// ========== Exclusion Suggestion Action ==========
+
+/**
+ * Action to analyze transitive dependencies and suggest exclusions.
+ * PREMIUM FEATURE: Requires Premium license.
+ */
+class ExclusionSuggestionAction(
+    private val project: Project,
+    private val onSuggestExclusions: () -> Unit
+) : DumbAwareAction(
+    message("unified.exclusion.suggestion.button"),
+    message("unified.exclusion.suggestion.description"),
+    AllIcons.General.InspectionsEye
+) {
+    private val isPremium: Boolean get() = LicenseChecker.getInstance().isPremium()
+
+    override fun actionPerformed(e: AnActionEvent) {
+        if (!PremiumFeatureGuard.checkOrPrompt(project, Feature.EXCLUSION_SUGGESTIONS)) {
+            return
+        }
+        onSuggestExclusions()
+    }
+
+    override fun update(e: AnActionEvent) {
+        if (!isPremium) {
+            e.presentation.text = message("unified.exclusion.suggestion.button") + " (Premium)"
+            e.presentation.description = "Exclusion suggestions require a Premium license"
+        }
+    }
+
+    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
+}
+
 // ========== Collapse/Expand All Actions ==========
 
 /**
@@ -375,7 +408,7 @@ class RepositorySettingsAction(
 // ========== Toolbar Action Group ==========
 
 /**
- * Factory for creating the main UDP toolbar action group.
+ * Factory for creating the main UDM toolbar action group.
  */
 object UdmToolbarActionGroup {
 
@@ -389,6 +422,7 @@ object UdmToolbarActionGroup {
         feedSelectorAction: FeedSelectorAction,
         prereleaseToggleAction: PrereleaseToggleAction,
         refreshAction: RefreshAction,
+        exclusionSuggestionAction: ExclusionSuggestionAction,
         upgradeAllAction: UpgradeAllAction,
         consolidateAction: ConsolidateAction,
         settingsAction: RepositorySettingsAction
@@ -410,8 +444,9 @@ object UdmToolbarActionGroup {
             add(prereleaseToggleAction)
             addSeparator()
 
-            // Refresh
+            // Refresh + Exclusion suggestions (next to each other)
             add(refreshAction)
+            add(exclusionSuggestionAction)
             addSeparator()
 
             // Batch operations
@@ -442,7 +477,7 @@ object UdmToolbarActionGroup {
 // ========== Keyboard Shortcut Registration ==========
 
 /**
- * Keyboard shortcut constants for UDP actions.
+ * Keyboard shortcut constants for UDM actions.
  */
 object UdmKeyboardShortcuts {
     const val SEARCH = "ctrl F"

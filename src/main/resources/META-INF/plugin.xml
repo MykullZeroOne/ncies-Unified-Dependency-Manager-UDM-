@@ -1,15 +1,15 @@
 <!-- Plugin Configuration File. Read more: https://plugins.jetbrains.com/docs/intellij/plugin-configuration-file.html -->
-<idea-plugin>
+<idea-plugin url="https://github.com/maddrobot/udm">
     <!-- Unique identifier of the plugin. It should be FQN. It cannot be changed between the plugin versions. -->
     <id>com.maddrobot.plugins.udm</id>
 
     <!-- Public plugin name should be written in Title Case.
          Guidelines: https://plugins.jetbrains.com/docs/marketplace/plugin-overview-page.html#plugin-name -->
-    <name>Unified Dependency Manager (UDP)</name>
+    <name>Unified Dependency Manager (UDM)</name>
 
     <!-- A displayed Vendor name or Organization ID displayed on the Plugins Page. -->
     <!-- email="support@star.com" url="https://www.example.com" -->
-    <vendor>Star</vendor>
+    <vendor url="https://github.com/maddrobot" email="development@maddrobot.tech">Madd Robot Tech</vendor>
 
     <!-- Product and plugin compatibility requirements.
          Read more: https://plugins.jetbrains.com/docs/intellij/plugin-compatibility.html -->
@@ -24,7 +24,7 @@
     <!-- Extension points defined by the plugin.
          Read more: https://plugins.jetbrains.com/docs/intellij/plugin-extension-points.html -->
     <extensions defaultExtensionNs="com.intellij">
-        <toolWindow id="Unified Dependency Manager (UDP)"
+        <toolWindow id="Unified Dependency Manager (UDM)"
                     secondary="true"
                     icon="/icons/packageFinder.svg"
                     anchor="bottom"
@@ -49,8 +49,8 @@
     <actions>
         <action id="com.maddrobot.plugins.udm.licensing.LicenseAction"
                 class="com.maddrobot.plugins.udm.licensing.LicenseAction"
-                text="UDM License..."
-                description="Manage UDM plugin license">
+                key="action.license.text"
+                description-key="action.license.description">
             <add-to-group group-id="ToolsMenu" anchor="last"/>
         </action>
     </actions>

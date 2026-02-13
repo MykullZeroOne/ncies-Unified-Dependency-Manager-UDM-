@@ -10,7 +10,7 @@ import com.maddrobot.plugins.udm.PackageFinderBundle.message
 import com.maddrobot.plugins.udm.setting.PackageFinderSettingWindow
 
 /**
- * @author drawsta
+ * madd robot tech
  * @LastModified: 2025-07-16
  * @since 2025-01-27
  */
@@ -43,10 +43,10 @@ fun showDialogWithConfigButton(vararg messages: Any) {
                 message("nexus.dependency.query.error.option.configure"),
                 message("nexus.dependency.query.error.option.cancel")
             ),
-            0, // 默认选中第 0 个 option
+            0, // Select option index 0 by default
             Messages.getErrorIcon()
         ).takeIf { it == 0 }?.also {
-            // 用户点击了「去配置」
+            // User clicked "Configure"
             ShowSettingsUtil.getInstance().showSettingsDialog(null, PackageFinderSettingWindow::class.java)
         }
     }

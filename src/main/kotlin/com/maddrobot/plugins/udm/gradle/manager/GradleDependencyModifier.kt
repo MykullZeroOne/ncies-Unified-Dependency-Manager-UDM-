@@ -8,13 +8,21 @@ import com.intellij.openapi.vfs.LocalFileSystem
 import com.maddrobot.plugins.udm.gradle.manager.model.DependencyExclusion
 import java.io.File
 
+/**
+ * A utility class for modifying Gradle build dependencies programmatically.
+ * This class handles tasks such as adding, removing, updating dependencies, and
+ * managing exclusions within Gradle build files.
+ *
+ * @constructor Creates an instance of GradleDependencyModifier.
+ * @param project The context of the project where the dependencies are being modified.
+ */
 class GradleDependencyModifier(private val project: Project) {
 
     fun getRemovedContent(dependency: InstalledDependency): String? {
         val virtualFile = LocalFileSystem.getInstance().findFileByPath(dependency.buildFile) ?: return null
         val document = FileDocumentManager.getInstance().getDocument(virtualFile) ?: return null
         val text = document.text
-        
+
         if (dependency.offset >= 0 && dependency.offset + dependency.length <= text.length) {
             var end = dependency.offset + dependency.length
             if (end < text.length && text[end] == '\n') {
@@ -47,12 +55,18 @@ class GradleDependencyModifier(private val project: Project) {
         return null
     }
 
-    fun getAddedContent(buildFile: String, groupId: String, artifactId: String, version: String, configuration: String): String? {
+    fun getAddedContent(
+        buildFile: String,
+        groupId: String,
+        artifactId: String,
+        version: String,
+        configuration: String
+    ): String? {
         val virtualFile = LocalFileSystem.getInstance().findFileByPath(buildFile) ?: return null
         val document = FileDocumentManager.getInstance().getDocument(virtualFile) ?: return null
         val text = document.text
         val isKotlin = virtualFile.name.endsWith(".kts")
-        
+
         val depLine = if (isKotlin) {
             "    $configuration(\"$groupId:$artifactId:$version\")"
         } else {
@@ -73,7 +87,7 @@ class GradleDependencyModifier(private val project: Project) {
                     }
                 }
             }
-            
+
             if (closingBraceIndex != -1) {
                 val sb = StringBuilder(text)
                 // Insert before closing brace, ensure there's a newline
@@ -82,7 +96,7 @@ class GradleDependencyModifier(private val project: Project) {
                 return sb.toString()
             }
         }
-        
+
         // If no dependencies block, append one
         return text + "\n\ndependencies {\n$depLine\n}\n"
     }
@@ -156,13 +170,25 @@ class GradleDependencyModifier(private val project: Project) {
         // Build a pattern to match the exclude line
         val excludePattern = if (isKotlin) {
             if (exclusion.artifactId != null) {
-                Regex("""[ \t]*exclude\(group\s*=\s*"${Regex.escape(exclusion.groupId)}"\s*,\s*module\s*=\s*"${Regex.escape(exclusion.artifactId)}"\)\s*\n?""")
+                Regex(
+                    """[ \t]*exclude\(group\s*=\s*"${Regex.escape(exclusion.groupId)}"\s*,\s*module\s*=\s*"${
+                        Regex.escape(
+                            exclusion.artifactId
+                        )
+                    }"\)\s*\n?"""
+                )
             } else {
                 Regex("""[ \t]*exclude\(group\s*=\s*"${Regex.escape(exclusion.groupId)}"\)\s*\n?""")
             }
         } else {
             if (exclusion.artifactId != null) {
-                Regex("""[ \t]*exclude\s+group:\s*'${Regex.escape(exclusion.groupId)}'\s*,\s*module:\s*'${Regex.escape(exclusion.artifactId)}'\s*\n?""")
+                Regex(
+                    """[ \t]*exclude\s+group:\s*'${Regex.escape(exclusion.groupId)}'\s*,\s*module:\s*'${
+                        Regex.escape(
+                            exclusion.artifactId
+                        )
+                    }'\s*\n?"""
+                )
             } else {
                 Regex("""[ \t]*exclude\s+group:\s*'${Regex.escape(exclusion.groupId)}'\s*\n?""")
             }

@@ -15,6 +15,27 @@ import com.maddrobot.plugins.udm.ui.borderPanel
 import java.awt.BorderLayout
 import javax.swing.JPanel
 
+/**
+ * Represents a UI component for displaying and managing Gradle dependency updates for a given project.
+ *
+ * @constructor Initializes the `UpdatesTab` with the given `Project` instance.
+ * @param project The project for which the dependency updates tab is created.
+ *
+ * The UpdatesTab provides a table-based interface to view dependency update information and actions for refreshing
+ * or applying updates to build files.
+ *
+ * Functionalities:
+ * - Displays a list of dependencies requiring updates in a table with relevant details such as artifactId, groupId,
+ *   current version, latest version, and module name.
+ * - Subscribes to dependency change events to automatically update the displayed dependency list.
+ * - Offers a refresh button to manually reload the dependency update data.
+ * - Provides an update button that allows previewing and applying changes to dependencies in their respective build files.
+ *
+ * Dependencies are fetched using `GradleDependencyManagerService`, and updates to build files are managed via
+ * `GradleDependencyModifier`. The tab integrates a table model and decorators to enhance user interaction.
+ *
+ * Threading Notes: All actions are performed on the Event Dispatch Thread (EDT) for proper UI thread management.
+ */
 class UpdatesTab(private val project: Project) {
     private val service = GradleDependencyManagerService.getInstance(project)
     private val modifier = GradleDependencyModifier(project)
@@ -28,11 +49,13 @@ class UpdatesTab(private val project: Project) {
     private val table = TableView(model)
 
     init {
-        project.messageBus.connect().subscribe(GradleDependencyManagerService.DEPENDENCY_CHANGE_TOPIC, object : GradleDependencyManagerService.DependencyChangeListener {
-            override fun onDependenciesChanged() {
-                model.items = service.dependencyUpdates
-            }
-        })
+        project.messageBus.connect().subscribe(
+            GradleDependencyManagerService.DEPENDENCY_CHANGE_TOPIC,
+            object : GradleDependencyManagerService.DependencyChangeListener {
+                override fun onDependenciesChanged() {
+                    model.items = service.dependencyUpdates
+                }
+            })
     }
 
     val contentPanel: JPanel = borderPanel {
@@ -40,13 +63,22 @@ class UpdatesTab(private val project: Project) {
             .disableAddAction()
             .disableRemoveAction()
             .disableUpDownActions()
-            .addExtraAction(object : com.intellij.openapi.actionSystem.AnAction(message("gradle.manager.button.refresh"), message("gradle.manager.button.refresh"), com.intellij.icons.AllIcons.Actions.Refresh) {
+            .addExtraAction(object : com.intellij.openapi.actionSystem.AnAction(
+                message("gradle.manager.button.refresh"),
+                message("gradle.manager.button.refresh"),
+                com.intellij.icons.AllIcons.Actions.Refresh
+            ) {
                 override fun actionPerformed(e: com.intellij.openapi.actionSystem.AnActionEvent) {
                     service.refresh()
                 }
+
                 override fun getActionUpdateThread() = com.intellij.openapi.actionSystem.ActionUpdateThread.EDT
             })
-            .addExtraAction(object : com.intellij.openapi.actionSystem.AnAction(message("gradle.manager.button.update"), message("gradle.manager.button.update"), com.intellij.icons.AllIcons.Actions.Checked) {
+            .addExtraAction(object : com.intellij.openapi.actionSystem.AnAction(
+                message("gradle.manager.button.update"),
+                message("gradle.manager.button.update"),
+                com.intellij.icons.AllIcons.Actions.Checked
+            ) {
                 override fun actionPerformed(e: com.intellij.openapi.actionSystem.AnActionEvent) {
                     val selected = table.selectedObject
                     if (selected != null) {
@@ -56,7 +88,12 @@ class UpdatesTab(private val project: Project) {
                             val originalContent = document.text
                             val newContent = modifier.getUpdatedContent(selected.installed, selected.latestVersion)
                             if (newContent != null) {
-                                val dialog = PreviewDiffDialog(project, selected.installed.buildFile, originalContent, newContent)
+                                val dialog = PreviewDiffDialog(
+                                    project,
+                                    selected.installed.buildFile,
+                                    originalContent,
+                                    newContent
+                                )
                                 if (dialog.showAndGet()) {
                                     modifier.applyChanges(selected.installed, newContent, "Update Dependency")
                                 }
@@ -64,9 +101,10 @@ class UpdatesTab(private val project: Project) {
                         }
                     }
                 }
+
                 override fun getActionUpdateThread() = com.intellij.openapi.actionSystem.ActionUpdateThread.EDT
             })
-        
+
         add(decorator.createPanel(), BorderLayout.CENTER)
     }
 

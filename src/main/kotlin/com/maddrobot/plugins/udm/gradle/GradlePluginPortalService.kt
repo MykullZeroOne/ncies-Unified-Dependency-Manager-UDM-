@@ -8,9 +8,19 @@ import com.maddrobot.plugins.udm.util.showErrorDialog
 import java.io.IOException
 
 /**
- * @author drawsta
- * @LastModified: 2025-07-20
- * @since 2025-07-15
+ * Provides functionality to interact with the Gradle Plugin Portal.
+ *
+ * This service fetches and parses plugin information from the Gradle Plugin Portal
+ * by executing HTTP requests and parsing HTML content. It is capable of searching
+ * for plugins by keywords and navigating paginated search results.
+ *
+ * Functionality includes:
+ * - Searching for Gradle plugins by a specific query.
+ * - Navigating plugin search result pages.
+ * - Fetching plugin details such as name, version, release date, and description.
+ *
+ * All interactions with the portal are performed over HTTP using a defined user agent.
+ * Error handling is incorporated to handle network issues during communication with the portal.
  */
 object GradlePluginPortalService {
 

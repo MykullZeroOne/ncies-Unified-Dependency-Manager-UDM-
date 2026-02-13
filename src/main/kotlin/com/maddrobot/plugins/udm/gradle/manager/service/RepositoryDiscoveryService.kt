@@ -607,16 +607,17 @@ class RepositoryDiscoveryService(private val project: Project) {
                             }
                         }
 
-                        if (foundUrl != null && foundUrl!!.startsWith("http")) {
+                        val resolvedUrl = foundUrl
+                        if (resolvedUrl != null && resolvedUrl.startsWith("http")) {
                             // Extract credentials if present
                             val (username, password) = extractKotlinCredentials(lambdaArg, gradleProperties)
 
                             repos.add(
                                 RepositoryConfig(
-                                    id = generateRepoId(foundUrl!!),
-                                    name = extractRepoName(foundUrl!!),
-                                    url = foundUrl!!,
-                                    type = guessRepositoryType(foundUrl!!),
+                                    id = generateRepoId(resolvedUrl),
+                                    name = extractRepoName(resolvedUrl),
+                                    url = resolvedUrl,
+                                    type = guessRepositoryType(resolvedUrl),
                                     source = source,
                                     username = username,
                                     password = password

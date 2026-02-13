@@ -9,13 +9,13 @@ import javax.swing.DefaultListCellRenderer
 import javax.swing.JList
 
 /**
- * @author drawsta
+ * madd robot tech
  * @LastModified: 2025-07-18
  * @since 2025-01-23
  */
 object PackageFinderListCellRenderer : DefaultListCellRenderer() {
 
-    // DefaultListCellRenderer 实现了 Serializable 接口，实现 readResolve 方法，确保反序列化时仍然返回单例实例
+    // DefaultListCellRenderer implements Serializable; implement readResolve to ensure singleton behavior after deserialization
     @Suppress
     private fun readResolve(): Any = PackageFinderListCellRenderer
 

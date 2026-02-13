@@ -4,12 +4,12 @@ import com.intellij.util.ui.ListTableModel
 import kotlin.math.ceil
 
 /**
- * 支持分页的 [ListTableModel]
+ * Paginated wrapper around [ListTableModel]
  *
- * tip：原生 Swing [javax.swing.JTable] 没有分页概念，表格只有一页，items 就是表格的所有数据。
- * 当我们支持分页后，items 实际变为表格当前页数据，而分页模型 [Pagination] 中的 [Pagination.data] 才是表格所有数据
+ * Tip: Native Swing [javax.swing.JTable] has no pagination; a table has one page and `items` contains all data.
+ * With pagination enabled, `items` becomes the current page's data, while [Pagination.data] holds all rows.
  *
- * @author drawsta
+ * madd robot tech
  * @LastModified: 2025-01-21
  * @since 2025-01-21
  */
@@ -22,14 +22,14 @@ abstract class PaginatedListTableModel<T> : ListTableModel<T>() {
     private val pagination: Pagination<T> = Pagination()
 
     /**
-     * 更新表格的所有数据
+     * Update all table data
      */
     fun updateTableData(data: List<T>) {
         pagination.data = data
     }
 
     /**
-     * 更新表格当前页数据
+     * Update current page data
      */
     fun updateCurrentPageData() {
         items = pagination.getCurrentPageData()
@@ -37,35 +37,35 @@ abstract class PaginatedListTableModel<T> : ListTableModel<T>() {
     }
 
     /**
-     * 获取表格当前页数据
+     * Get current page data
      */
     fun getCurrentPageData(): List<T> = items
 
     /**
-     * 获取当前页码
+     * Get current page number
      */
     fun getCurrentPage(): Int = pagination.currentPage
 
     /**
-     * 更新当前页码
+     * Set current page number
      */
     fun setCurrentPage(page: Int) {
         pagination.currentPage = page
     }
 
     /**
-     * 获取总页数
+     * Get total number of pages
      */
     fun getTotalPages(): Int = pagination.totalPages
 }
 
 /**
- * 分页模型
+ * Pagination model
  */
 private class Pagination<T>(
-    // 每页条数
+    // Items per page
     var pageSize: Int = 10,
-    // 整个表格的数据，初次加载的全量本地 Maven 依赖包信息，或匹配某关键字的全量搜索结果
+    // All table data: the initial full set of local Maven dependencies, or the full search results for a keyword
     var data: List<T> = emptyList()
 ) {
     var currentPage: Int = 1

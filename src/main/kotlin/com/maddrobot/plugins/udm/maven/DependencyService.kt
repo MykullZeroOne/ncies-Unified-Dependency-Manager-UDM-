@@ -12,7 +12,7 @@ import java.nio.charset.StandardCharsets
 /**
  * refer: https://central.sonatype.org/search/rest-api-guide/
  *
- * @author drawsta
+ * madd robot tech
  * @LastModified: 2025-07-16
  * @since 2025-01-19
  */
@@ -46,7 +46,7 @@ object DependencyService {
 
     private fun parseCentralResponse(responseBody: String): List<Dependency> {
         return try {
-            val json = Json { ignoreUnknownKeys = true } // 反序列化时忽略掉类中不存在的属性
+            val json = Json { ignoreUnknownKeys = true } // Ignore unknown properties during deserialization
             val artifactResponse = json.decodeFromString(MavenSearchResult.serializer(), responseBody)
             artifactResponse.response.centralDependencies
         } catch (e: Exception) {
@@ -57,7 +57,7 @@ object DependencyService {
 
     private fun parseNexusResponse(responseBody: String): List<NexusDependency> {
         return try {
-            val json = Json { ignoreUnknownKeys = true } // 反序列化时忽略掉类中不存在的属性
+            val json = Json { ignoreUnknownKeys = true } // Ignore unknown properties during deserialization
             val searchResult = json.decodeFromString(NexusSearchResult.serializer(), responseBody)
             val result = mutableListOf<NexusDependency>()
 
@@ -94,31 +94,31 @@ object DependencyService {
     }
 
     /**
-     * 构建 Maven 中央仓库的搜索 URL
+     * Build the Maven Central repository search URL.
      *
-     * @param query 搜索关键字，支持以下格式：
-     * - `g:group`：按 group 搜索（例如：`g:com.example`）
-     * - `a:artifact`：按 artifact 搜索（例如：`a:lombok`）
-     * - `group:artifact`：按 group 和 artifact 组合搜索（例如：`com.example:lombok`）
-     * - `artifact`：直接按 artifact 搜索（例如：`lombok`）
-     * @param version 可选参数，指定版本号（例如：`1.0.0`）
-     * @param packaging 可选参数，指定打包类型（例如：`jar`）
-     * @param rowsLimit 可选参数，指定搜索结果的最大条数，默认为 20
-     * @return 返回构建好的 Maven 中央仓库搜索 URL
+     * @param query Search keyword. Supported formats:
+     * - `g:group`: search by group (e.g., `g:com.example`)
+     * - `a:artifact`: search by artifact (e.g., `a:lombok`)
+     * - `group:artifact`: search by group and artifact (e.g., `com.example:lombok`)
+     * - `artifact`: direct artifact search (e.g., `lombok`)
+     * @param version Optional version (e.g., `1.0.0`)
+     * @param packaging Optional packaging type (e.g., `jar`)
+     * @param rowsLimit Optional max results, default 20
+     * @return The constructed Maven Central search URL
      *
-     * 示例：
+     * Examples:
      * ```
-     * mavenSearchUrl("g:com.example") // 按 group 搜索
-     * mavenSearchUrl("a:lombok") // 按 artifact 搜索
-     * mavenSearchUrl("lombok") // 按 artifact 搜索
-     * mavenSearchUrl("com.example:lombok") // 按 group 和 artifact 组合搜索
+     * mavenSearchUrl("g:com.example") // search by group
+     * mavenSearchUrl("a:lombok") // search by artifact
+     * mavenSearchUrl("lombok") // search by artifact
+     * mavenSearchUrl("com.example:lombok") // search by group and artifact
      * ```
      */
     fun mavenSearchUrl(
-        query: String, // 支持 g:group、a:artifact、artifact 或 group:artifact 格式
-        version: String? = null, // 可选参数：版本号
-        packaging: String? = null, // 可选参数：打包类型
-        rowsLimit: Int = 20 // 可选参数：搜索结果的最大条数
+        query: String, // Supports formats: g:group, a:artifact, artifact, or group:artifact
+        version: String? = null, // Optional: version
+        packaging: String? = null, // Optional: packaging type
+        rowsLimit: Int = 20 // Optional: maximum number of results
     ): String {
         val (group, artifactId) = when {
             query.startsWith("g:") -> Pair(query.removePrefix("g:"), null)
@@ -131,14 +131,14 @@ object DependencyService {
             else -> Pair(null, query)
         }
 
-        // 构建查询条件
+        // Build the query expression
         val q = listOf(
             "g" to group,
             "a" to artifactId,
             "v" to version,
             "p" to packaging
         )
-            // 过滤掉值为 null 的键值对
+            // Filter out key-value pairs with null values
             .filter { it.second != null }
             .joinToString(separator = " AND ") { "${it.first}:\"${it.second}\"" }
 

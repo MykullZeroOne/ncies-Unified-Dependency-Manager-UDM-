@@ -13,9 +13,9 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 /**
- * Maven 依赖包信息表格的数据模型
+ * Data model for the Maven dependency table
  *
- * @author drawsta
+ * madd robot tech
  * @LastModified: 2025-07-13
  * @since 2025-01-20
  */

@@ -7,6 +7,7 @@ import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBTextField
 import com.intellij.ui.dsl.builder.*
 import com.intellij.util.ui.JBUI
+import com.maddrobot.plugins.udm.PackageFinderBundle.message
 import java.awt.event.ActionEvent
 import javax.swing.AbstractAction
 import javax.swing.Action
@@ -24,7 +25,7 @@ class LicenseDialog(private val project: Project?) : DialogWrapper(project) {
     private var statusLabel = JBLabel()
 
     init {
-        title = "UDM License"
+        title = message("license.dialog.title")
         init()
         updateStatus()
     }
@@ -35,79 +36,71 @@ class LicenseDialog(private val project: Project?) : DialogWrapper(project) {
         return panel {
             // Current status
             row {
-                label("Status:").bold()
+                label(message("settings.license.status")).bold()
                 cell(statusLabel)
             }
 
             if (info.tier == LicenseChecker.Tier.PREMIUM) {
                 row {
-                    label("Licensed via:")
+                    label(message("settings.license.source"))
                     label(info.description)
                 }
 
                 // Show email/expiry only for direct licenses
                 if (info.source == LicenseChecker.LicenseSource.DIRECT) {
                     row {
-                        label("Email:")
+                        label(message("settings.license.email"))
                         label(info.email ?: "")
                     }
                     row {
-                        label("Expires:")
-                        label(info.expiresAt?.toString() ?: "Never")
+                        label(message("settings.license.expires"))
+                        label(info.expiresAt?.toString() ?: message("settings.license.never"))
                     }
                 }
 
                 separator()
 
                 row {
-                    text("You have Premium access. All features are unlocked.")
+                    text(message("license.dialog.premium.message"))
                 }
 
                 // Show note about JetBrains license
                 if (info.source == LicenseChecker.LicenseSource.JETBRAINS) {
                     row {
-                        comment("License managed through JetBrains Marketplace")
+                        comment(message("settings.license.jetbrains.note"))
                     }
                 }
             } else {
                 separator()
 
-                group("Activate Direct License") {
-                    row("Email:") {
+                group(message("license.dialog.activate.group")) {
+                    row(message("settings.license.email")) {
                         cell(emailField)
                             .columns(COLUMNS_LARGE)
-                            .comment("The email your license was issued to")
+                            .comment(message("license.dialog.email.comment"))
                     }
-                    row("License Key:") {
+                    row(message("settings.license.key")) {
                         cell(licenseKeyField)
                             .columns(COLUMNS_LARGE)
-                            .comment("Format: UDM-XXXXXXXX-XXXXXXXX")
+                            .comment(message("settings.license.key.comment"))
                     }
                 }
 
                 separator()
 
                 row {
-                    text(
-                        """
-                        <b>Free tier includes:</b> Package search, view dependencies,
-                        add/remove/update individual packages.
-                        <br><br>
-                        <b>Premium adds:</b> Vulnerability scanning, bulk upgrades,
-                        dependency tree, private repos, and more.
-                        """.trimIndent()
-                    )
+                    text(message("license.dialog.free.features"))
                 }
 
                 separator()
 
                 row {
-                    label("Get Premium:").bold()
+                    label(message("license.dialog.get.premium")).bold()
                 }
                 row {
-                    browserLink("Buy on JetBrains Marketplace", "https://plugins.jetbrains.com/plugin/YOUR_PLUGIN_ID")
-                    label(" or ")
-                    browserLink("Buy Direct", "https://github.com/maddrobot/udm#premium")
+                    browserLink(message("license.dialog.buy.marketplace"), "https://plugins.jetbrains.com/plugin/YOUR_PLUGIN_ID")
+                    label(message("license.dialog.or"))
+                    browserLink(message("license.dialog.buy.direct"), "https://github.com/maddrobot/udm#premium")
                 }
             }
         }.withPreferredWidth(480).withBorder(JBUI.Borders.empty(10))
@@ -124,12 +117,12 @@ class LicenseDialog(private val project: Project?) : DialogWrapper(project) {
             // Direct license - can deactivate
             info.source == LicenseChecker.LicenseSource.DIRECT -> {
                 arrayOf(
-                    object : AbstractAction("Deactivate") {
+                    object : AbstractAction(message("license.dialog.button.deactivate")) {
                         override fun actionPerformed(e: ActionEvent?) {
                             val confirm = Messages.showYesNoDialog(
                                 project,
-                                "Are you sure you want to deactivate your direct license?",
-                                "Deactivate License",
+                                message("settings.license.deactivate.confirm"),
+                                message("settings.license.deactivate.title"),
                                 Messages.getQuestionIcon()
                             )
                             if (confirm == Messages.YES) {
@@ -148,7 +141,7 @@ class LicenseDialog(private val project: Project?) : DialogWrapper(project) {
             // Free - show activate
             else -> {
                 arrayOf(
-                    object : AbstractAction("Activate") {
+                    object : AbstractAction(message("license.dialog.button.activate")) {
                         override fun actionPerformed(e: ActionEvent?) {
                             activateLicense()
                         }
@@ -164,20 +157,20 @@ class LicenseDialog(private val project: Project?) : DialogWrapper(project) {
         val key = licenseKeyField.text.trim()
 
         if (email.isBlank()) {
-            Messages.showErrorDialog(project, "Please enter your email address.", "Activation Error")
+            Messages.showErrorDialog(project, message("settings.license.activate.error.email"), message("settings.license.activate.error.title"))
             return
         }
 
         if (key.isBlank()) {
-            Messages.showErrorDialog(project, "Please enter your license key.", "Activation Error")
+            Messages.showErrorDialog(project, message("settings.license.activate.error.key"), message("settings.license.activate.error.title"))
             return
         }
 
         val error = checker.activateLicense(email, key)
         if (error != null) {
-            Messages.showErrorDialog(project, error, "Activation Error")
+            Messages.showErrorDialog(project, error, message("settings.license.activate.error.title"))
         } else {
-            Messages.showInfoMessage(project, "License activated successfully! All Premium features are now unlocked.", "Activation Complete")
+            Messages.showInfoMessage(project, message("settings.license.activate.success"), message("settings.license.activate.success.title"))
             close(OK_EXIT_CODE)
         }
     }
@@ -185,8 +178,8 @@ class LicenseDialog(private val project: Project?) : DialogWrapper(project) {
     private fun updateStatus() {
         val info = checker.getLicenseInfo()
         statusLabel.text = when (info.tier) {
-            LicenseChecker.Tier.FREE -> "<html><b style='color:#888888'>Free</b></html>"
-            LicenseChecker.Tier.PREMIUM -> "<html><b style='color:#4CAF50'>Premium</b></html>"
+            LicenseChecker.Tier.FREE -> "<html><b style='color:#888888'>${message("settings.license.status.free")}</b></html>"
+            LicenseChecker.Tier.PREMIUM -> "<html><b style='color:#4CAF50'>${message("settings.license.status.premium")}</b></html>"
         }
     }
 }

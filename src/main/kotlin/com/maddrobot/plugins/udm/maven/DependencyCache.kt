@@ -1,39 +1,47 @@
 package com.maddrobot.plugins.udm.maven
 
 /**
- * 缓存，避免切换 Maven 仓库来源后，再切换回来，之前数据丢失，导致需要重新加载/查询
+ * Represents a cache for holding Maven dependencies from various sources.
  *
- * @author drawsta
- * @LastModified: 2025-07-08
- * @since 2025-01-20
+ * This class acts as a centralized storage for dependencies retrieved from different repositories.
+ * Dependencies are categorized into three lists: local, central, and Nexus-based repositories.
  */
 class DependencyCache {
 
     /**
-     * 缓存初次加载的全量本地 Maven 依赖包信息，避免反复递归本地 Maven 仓库
+     * Represents a collection of local Maven dependencies available in the system.
      *
-     * 作用：
-     * 1. 从本地 Maven 仓库搜索依赖时，直接从缓存取
-     * 2. 切换 Maven 仓库来源时，当切回本地 Maven 仓库，需在表格显示之前加载过的本地 Maven 依赖包信息
+     * This list is populated with instances of the `Dependency` class, which describes the core
+     * components of a Maven dependency, including `groupId`, `artifactId`, and `version`. These dependencies
+     * are typically resolved or loaded from the local `.m2` repository or other similar sources.
      *
-     * 更新缓存
-     * 1. 点击重新加载数据按钮时
+     * This variable is initialized with an empty list by default and can be updated with relevant
+     * dependencies based on the project configuration or scanning logic.
      */
     var localDependencies: List<Dependency> = emptyList()
 
     /**
-     * 缓存从 Maven 中央仓库查询到的 Maven 依赖包信息
+     * A list representing dependencies retrieved from the central Maven repository.
      *
-     * 作用：
-     * 1. 切换 Maven 仓库来源时，当切回 Maven 中央仓库，需在表格显示之前从 Maven 中央仓库查询出的依赖包信息
+     * This variable holds the dependencies that are obtained from the central repository
+     * for build or dependency resolution purposes. Each dependency is represented as an
+     * instance of the [Dependency] class, encompassing core Maven GAV (GroupId, ArtifactId,
+     * Version) information.
+     *
+     * This property is initialized to an empty list and can be dynamically populated based
+     * on the resolution or retrieval logic implemented in the context of the application.
      */
     var centralDependencies: List<Dependency> = emptyList()
 
     /**
-     * 缓存从 Nexus 私服仓库查询到的 Maven 依赖包信息
+     * A list of dependencies sourced from the Nexus repository.
      *
-     * 作用：
-     * 1. 切换 Maven 仓库来源时，当切回 Nexus 私服仓库，需在表格显示之前从 Nexus 私服仓库查询出的依赖包信息
+     * This property stores Maven dependency metadata retrieved from the Nexus repository, which typically includes
+     * information such as group ID, artifact ID, and version. It is part of the [DependencyCache] class and complements
+     * other dependency lists, such as local and central dependencies.
+     *
+     * This variable is initialized to an empty list and can be updated with dependency data fetched or processed
+     * from Nexus.
      */
     var nexusDependencies: List<Dependency> = emptyList()
 }

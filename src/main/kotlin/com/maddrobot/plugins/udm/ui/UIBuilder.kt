@@ -7,7 +7,7 @@ import javax.swing.JPanel
 import javax.swing.JScrollPane
 
 /**
- * @author msmith
+ * madd robot tech
  * @LastModified: 2026-01-30
  * @since 2025-01-22
  */

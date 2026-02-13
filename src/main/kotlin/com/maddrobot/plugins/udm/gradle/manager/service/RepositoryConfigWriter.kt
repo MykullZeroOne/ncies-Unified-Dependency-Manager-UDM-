@@ -212,10 +212,8 @@ class RepositoryConfigWriter(private val project: Project) {
                 return null // Already exists
             }
             val newRepos = existingRepos.trimEnd() + "\n$repoDeclaration\n    "
-            return text.replaceRange(
-                dependencyResolutionMatch.groups[2]!!.range,
-                newRepos
-            )
+            val groupRange = dependencyResolutionMatch.groups[2]?.range ?: return null
+            return text.replaceRange(groupRange, newRepos)
         }
 
         // Try to find standalone repositories block
@@ -229,10 +227,8 @@ class RepositoryConfigWriter(private val project: Project) {
                 return null // Already exists
             }
             val newRepos = existingRepos.trimEnd() + "\n$repoDeclaration\n"
-            return text.replaceRange(
-                reposMatch.groups[2]!!.range,
-                newRepos
-            )
+            val groupRange = reposMatch.groups[2]?.range ?: return null
+            return text.replaceRange(groupRange, newRepos)
         }
 
         return null // No repositories block found

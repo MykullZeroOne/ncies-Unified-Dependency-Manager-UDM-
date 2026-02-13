@@ -10,6 +10,7 @@ import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.dsl.builder.*
 import com.intellij.ui.table.JBTable
 import com.intellij.util.ui.JBUI
+import com.maddrobot.plugins.udm.PackageFinderBundle.message
 import com.maddrobot.plugins.udm.gradle.manager.model.UnifiedPackage
 import java.awt.BorderLayout
 import java.awt.Component
@@ -50,8 +51,8 @@ class ConsolidateVersionsDialog(
     private lateinit var previewPanel: JPanel
 
     init {
-        title = "Consolidate Package Versions"
-        setOKButtonText("Apply Consolidation")
+        title = message("unified.consolidate.dialog.title")
+        setOKButtonText(message("unified.consolidate.dialog.button"))
         init()
     }
 
@@ -64,9 +65,8 @@ class ConsolidateVersionsDialog(
         val headerPanel = JPanel(BorderLayout()).apply {
             border = JBUI.Borders.emptyBottom(10)
 
-            add(JBLabel("<html><b>Packages with Inconsistent Versions</b><br>" +
-                "<font color='gray'>These packages have different versions across modules. " +
-                "Select a target version for each to consolidate.</font></html>"), BorderLayout.WEST)
+            add(JBLabel("<html><b>${message("unified.consolidate.dialog.header")}</b><br>" +
+                "<font color='gray'>${message("unified.consolidate.dialog.description")}</font></html>"), BorderLayout.WEST)
 
             summaryLabel = JBLabel().apply {
                 font = font.deriveFont(12f)
@@ -98,15 +98,15 @@ class ConsolidateVersionsDialog(
         val buttonPanel = JPanel(FlowLayout(FlowLayout.LEFT, 5, 0)).apply {
             border = JBUI.Borders.emptyTop(10)
 
-            add(JButton("Use Latest for All").apply {
-                toolTipText = "Set target version to latest available for all packages"
+            add(JButton(message("unified.consolidate.dialog.use.latest")).apply {
+                toolTipText = message("unified.consolidate.dialog.use.latest.tooltip")
                 addActionListener { setAllToLatest() }
             })
-            add(JButton("Use Newest Installed for All").apply {
-                toolTipText = "Set target version to newest installed version for all packages"
+            add(JButton(message("unified.consolidate.dialog.use.newest")).apply {
+                toolTipText = message("unified.consolidate.dialog.use.newest.tooltip")
                 addActionListener { setAllToNewestInstalled() }
             })
-            add(JButton("Preview Changes").apply {
+            add(JButton(message("unified.consolidate.dialog.preview")).apply {
                 icon = AllIcons.Actions.Preview
                 addActionListener { showPreview() }
             })
@@ -117,7 +117,7 @@ class ConsolidateVersionsDialog(
             isVisible = false
             border = BorderFactory.createTitledBorder(
                 JBUI.Borders.customLine(JBColor.border(), 1, 0, 0, 0),
-                "Preview"
+                message("unified.consolidate.dialog.preview.border")
             )
         }
 
@@ -152,7 +152,7 @@ class ConsolidateVersionsDialog(
 
     private fun showPreview() {
         val previewText = StringBuilder("<html><body style='font-family: monospace;'>")
-        previewText.append("<h3>Changes to Apply:</h3>")
+        previewText.append("<h3>${message("unified.consolidate.dialog.preview.changes")}</h3>")
         previewText.append("<table border='0' cellpadding='4'>")
 
         for (pkg in inconsistentPackages.filter { it.targetVersion != null }) {
@@ -162,7 +162,7 @@ class ConsolidateVersionsDialog(
                     previewText.append("<tr>")
                     previewText.append("<td>&nbsp;&nbsp;$module</td>")
                     previewText.append("<td><font color='red'>$version</font></td>")
-                    previewText.append("<td>→ <font color='green'>${pkg.targetVersion}</font></td>")
+                    previewText.append("<td>\u2192 <font color='green'>${pkg.targetVersion}</font></td>")
                     previewText.append("</tr>")
                 }
             }
@@ -181,21 +181,22 @@ class ConsolidateVersionsDialog(
     private fun updateSummary() {
         val configured = inconsistentPackages.count { it.targetVersion != null }
         val total = inconsistentPackages.size
-        summaryLabel.text = "$configured of $total packages configured"
+        summaryLabel.text = message("unified.consolidate.dialog.summary", configured, total)
     }
 
     fun getConsolidationResults(): List<ConsolidationResult> {
         return inconsistentPackages
             .filter { it.targetVersion != null }
             .flatMap { pkg ->
+                val target = pkg.targetVersion ?: return@flatMap emptyList()
                 pkg.moduleVersions
-                    .filter { (_, version) -> version != pkg.targetVersion }
+                    .filter { (_, version) -> version != target }
                     .map { (module, oldVersion) ->
                         ConsolidationResult(
                             packageId = pkg.packageId,
                             moduleName = module,
                             oldVersion = oldVersion,
-                            newVersion = pkg.targetVersion!!
+                            newVersion = target
                         )
                     }
             }
@@ -214,7 +215,12 @@ class ConsolidateVersionsDialog(
         private val packages: List<InconsistentPackage>
     ) : AbstractTableModel() {
 
-        private val columns = arrayOf("Package", "Current Versions", "Target Version", "Affected Modules")
+        private val columns = arrayOf(
+            message("unified.consolidate.column.package"),
+            message("unified.consolidate.column.versions"),
+            message("unified.consolidate.column.target"),
+            message("unified.consolidate.column.modules")
+        )
 
         override fun getRowCount(): Int = packages.size
         override fun getColumnCount(): Int = columns.size
@@ -279,7 +285,7 @@ class ConsolidateVersionsDialog(
             table: JTable?, value: Any?, isSelected: Boolean, hasFocus: Boolean, row: Int, column: Int
         ): Component {
             super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column)
-            text = value?.toString() ?: "Select..."
+            text = value?.toString() ?: message("unified.consolidate.dialog.target.select")
             foreground = if (value != null) JBColor(0x4CAF50, 0x81C784) else JBColor.GRAY
             return this
         }
@@ -314,7 +320,7 @@ class ConsolidateVersionsDialog(
             val pkg = inconsistentPackages[row]
 
             // Add latest version first if available
-            pkg.latestVersion?.let { typedComboBox.addItem("$it (latest)") }
+            pkg.latestVersion?.let { typedComboBox.addItem(message("unified.consolidate.dialog.version.latest", it)) }
 
             // Add installed versions sorted newest first
             pkg.versions.sortedWith(VersionComparator().reversed()).forEach {
@@ -328,7 +334,8 @@ class ConsolidateVersionsDialog(
 
         override fun getCellEditorValue(): Any? {
             val value = super.getCellEditorValue() as? String
-            return value?.replace(" (latest)", "")
+            // Strip the "(latest)" suffix pattern from the value
+            return value?.replace(Regex("\\s*\\(.*\\)$"), "")
         }
     }
 
@@ -363,7 +370,7 @@ class ConsolidateVersionsDialog(
                 .map { (id, pkgs) ->
                     val first = pkgs.first()
                     val moduleVersions = pkgs
-                        .flatMap { pkg -> pkg.modules.map { module -> module to pkg.installedVersion!! } }
+                        .flatMap { pkg -> val version = pkg.installedVersion ?: return@flatMap emptyList(); pkg.modules.map { module -> module to version } }
                         .toMap()
 
                     InconsistentPackage(

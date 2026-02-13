@@ -13,6 +13,7 @@ import com.intellij.ui.treeStructure.Tree
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import com.intellij.util.ui.tree.TreeUtil
+import com.maddrobot.plugins.udm.PackageFinderBundle.message
 import com.maddrobot.plugins.udm.gradle.manager.model.UnifiedPackage
 import com.maddrobot.plugins.udm.gradle.manager.service.TransitiveDependency
 import com.maddrobot.plugins.udm.gradle.manager.service.TransitiveDependencyService
@@ -75,10 +76,10 @@ class DependencyTreeDialog(
 
     init {
         title = when (mode) {
-            Mode.DEPENDENCIES -> "Dependencies of ${rootPackage.name}"
-            Mode.DEPENDENTS -> "Dependents of ${rootPackage.name}"
+            Mode.DEPENDENCIES -> message("unified.tree.dialog.title.deps", rootPackage.name)
+            Mode.DEPENDENTS -> message("unified.tree.dialog.title.dependents", rootPackage.name)
         }
-        setOKButtonText("Close")
+        setOKButtonText(message("unified.tree.dialog.close"))
         setCancelButtonText("")
         init()
         loadDependencies()
@@ -93,10 +94,11 @@ class DependencyTreeDialog(
         val headerPanel = JPanel(BorderLayout()).apply {
             border = JBUI.Borders.emptyBottom(10)
 
+            val descText = if (mode == Mode.DEPENDENCIES) message("unified.tree.dialog.desc.deps") else message("unified.tree.dialog.desc.dependents")
             val pkgInfo = JBLabel().apply {
                 icon = AllIcons.Nodes.PpLib
                 text = "<html><b>${rootPackage.id}</b> : ${rootPackage.installedVersion ?: rootPackage.latestVersion}<br>" +
-                    "<font color='gray'>${if (mode == Mode.DEPENDENCIES) "Shows what this package depends on" else "Shows what depends on this package"}</font></html>"
+                    "<font color='gray'>$descText</font></html>"
             }
             add(pkgInfo, BorderLayout.WEST)
         }
@@ -106,7 +108,7 @@ class DependencyTreeDialog(
             border = JBUI.Borders.emptyBottom(8)
 
             searchField = SearchTextField(true).apply {
-                textEditor.emptyText.text = "Filter dependencies..."
+                textEditor.emptyText.text = message("unified.tree.dialog.filter")
                 addDocumentListener(object : DocumentAdapter() {
                     override fun textChanged(e: javax.swing.event.DocumentEvent) {
                         filterTree(text.trim())
@@ -159,7 +161,7 @@ class DependencyTreeDialog(
 
                 // "Exclude" action — only for child nodes (not root) and when callback is provided
                 if (dep.depth > 0 && onExcludeRequested != null) {
-                    val excludeItem = JMenuItem("Exclude ${dep.artifactId} from ${rootPackage.name}").apply {
+                    val excludeItem = JMenuItem(message("unified.tree.context.exclude", dep.artifactId, rootPackage.name)).apply {
                         icon = AllIcons.Actions.Cancel
                         addActionListener { onExcludeRequested.invoke(dep) }
                     }
@@ -168,7 +170,7 @@ class DependencyTreeDialog(
                 }
 
                 // "Copy Coordinate" action
-                val copyItem = JMenuItem("Copy Coordinate").apply {
+                val copyItem = JMenuItem(message("unified.tree.context.copy.coordinate")).apply {
                     icon = AllIcons.Actions.Copy
                     addActionListener {
                         CopyPasteManager.getInstance().setContents(StringSelection(dep.fullCoordinate))
@@ -190,19 +192,19 @@ class DependencyTreeDialog(
             add(statusLabel, BorderLayout.WEST)
 
             val buttonPanel = JPanel(FlowLayout(FlowLayout.RIGHT, 5, 0)).apply {
-                add(JButton("Expand All").apply {
+                add(JButton(message("unified.tree.dialog.expand.all")).apply {
                     icon = AllIcons.Actions.Expandall
                     addActionListener { TreeUtil.expandAll(tree) }
                 })
-                add(JButton("Collapse All").apply {
+                add(JButton(message("unified.tree.dialog.collapse.all")).apply {
                     icon = AllIcons.Actions.Collapseall
                     addActionListener { TreeUtil.collapseAll(tree, 1) }
                 })
-                add(JButton("Copy as Text").apply {
+                add(JButton(message("unified.tree.dialog.copy.text")).apply {
                     icon = AllIcons.Actions.Copy
                     addActionListener { copyTreeAsText() }
                 })
-                add(JButton("Refresh").apply {
+                add(JButton(message("unified.tree.dialog.refresh")).apply {
                     icon = AllIcons.Actions.Refresh
                     addActionListener { loadDependencies() }
                 })
@@ -225,7 +227,7 @@ class DependencyTreeDialog(
     private fun loadDependencies() {
         if (isLoading) return
         isLoading = true
-        statusLabel.text = "Loading dependencies..."
+        statusLabel.text = message("unified.tree.dialog.loading")
         statusLabel.icon = AllIcons.Process.Step_1
 
         val version = rootPackage.installedVersion ?: rootPackage.latestVersion ?: return
@@ -284,8 +286,11 @@ class DependencyTreeDialog(
         TreeUtil.expandAll(tree)
 
         // Update status
-        val conflictText = if (conflictCount > 0) ", $conflictCount conflicts" else ""
-        statusLabel.text = "$totalCount dependencies$conflictText"
+        statusLabel.text = if (conflictCount > 0) {
+            message("unified.tree.dialog.status.conflicts", totalCount, conflictCount)
+        } else {
+            message("unified.tree.dialog.status", totalCount)
+        }
         statusLabel.icon = if (conflictCount > 0) AllIcons.General.Warning else null
     }
 
@@ -330,7 +335,7 @@ class DependencyTreeDialog(
         appendNode(rootNode, "")
 
         CopyPasteManager.getInstance().setContents(StringSelection(sb.toString()))
-        statusLabel.text = "Copied to clipboard"
+        statusLabel.text = message("unified.tree.dialog.copied")
     }
 
     override fun createActions(): Array<Action> {
@@ -361,7 +366,7 @@ class DependencyTreeDialog(
                 else -> AllIcons.Nodes.PpLibFolder
             }
 
-            val versionText = dep.version ?: "managed"
+            val versionText = dep.version ?: message("unified.tree.dialog.version.managed")
             val scopeText = dep.scope?.let { " <font color='gray'>($it)</font>" } ?: ""
             val optionalText = if (dep.isOptional) " <font color='purple'>[optional]</font>" else ""
 
@@ -372,15 +377,17 @@ class DependencyTreeDialog(
                 "<html>${dep.artifactId} : <font color='gray'>$versionText</font>$scopeText$optionalText</html>"
             }
 
-            toolTipText = "<html>" +
-                "<b>${dep.fullCoordinate}</b><br>" +
-                "Group: ${dep.groupId}<br>" +
-                "Artifact: ${dep.artifactId}<br>" +
-                "Version: ${dep.version ?: "managed"}<br>" +
-                (dep.scope?.let { "Scope: $it<br>" } ?: "") +
-                (if (dep.isConflict) "<font color='red'>Conflict with version: ${dep.conflictVersion}</font><br>" else "") +
-                (if (dep.isOptional) "Optional dependency<br>" else "") +
-                "</html>"
+            toolTipText = buildString {
+                append("<html>")
+                append("<b>${dep.fullCoordinate}</b><br>")
+                append(message("unified.tree.tooltip.group", dep.groupId)).append("<br>")
+                append(message("unified.tree.tooltip.artifact", dep.artifactId)).append("<br>")
+                append(message("unified.tree.tooltip.version", dep.version ?: message("unified.tree.dialog.version.managed"))).append("<br>")
+                dep.scope?.let { append(message("unified.tree.tooltip.scope", it)).append("<br>") }
+                if (dep.isConflict) append("<font color='red'>").append(message("unified.tree.tooltip.conflict", dep.conflictVersion ?: "")).append("</font><br>")
+                if (dep.isOptional) append(message("unified.tree.tooltip.optional")).append("<br>")
+                append("</html>")
+            }
 
             return this
         }

@@ -3,8 +3,8 @@
         <img src="./src/main/resources/META-INF/pluginIcon.svg" width="200" height="200" alt="logo"/>
     </a>
 </div>
-<h1 align="center">Unified Dependency Manager (UDP)</h1>
-<p align="center">IntelliJ plugin for package/dependency search and management (Maven, Gradle, NPM)</p>
+<h1 align="center">Unified Dependency Manager (UDM)</h1>
+<p align="center">IntelliJ plugin for searching, installing, and managing dependencies across Maven, Gradle, and NPM</p>
 
 <p align="center">
 <a href="https://github.com/maddrobot/udm"><img src="https://img.shields.io/badge/GitHub-maddrobot%2Fudm-blue?style=flat-square&logo=github" alt="GitHub"></a>
@@ -22,17 +22,28 @@
 
 <!-- Plugin description -->
 
-Search and manage packages across multiple repositories with ease.
+A unified interface for searching, installing, updating, and removing dependencies across Maven Central, Nexus, Gradle Plugin Portal, and NPM — directly inside your IDE.
+
+Instead of switching between browser tabs and manually editing build files, UDM provides a NuGet-style dependency management experience for JVM and Node.js projects. View installed packages, check for updates, scan for vulnerabilities, and apply changes with preview diffs — all from a single tool window.
 
 **Features**
 
-* Maven Dependency Search
-    * Search dependencies in Maven Central.
-    * Explore local Maven repository.
-    * Support Nexus private repository search.
-* Search Gradle plugins.
-* Search NPM packages.
-* NuGet-style dependency management UI.
+* **Dependency Management UI** — Browse installed dependencies, check for available updates, and apply upgrades with a single click. Preview diffs before any build file modification.
+* **Maven Central Search** — Search by artifact, group, or `group:artifact`. Double-click to copy a ready-to-use declaration. Right-click to download JARs, sources, or POMs.
+* **Local Maven Repository** — Explore your `~/.m2/repository` and copy dependency coordinates instantly.
+* **Nexus Private Repository** — Connect to your organization's Nexus server and search private artifacts.
+* **Gradle Plugin Portal** — Search plugins by tag or keyword.
+* **NPM Registry** — Search npm packages and copy install commands for npm, yarn, or pnpm.
+* **Multi-Module Support** — Scans all modules in your project and tracks which module owns each dependency.
+* **Vulnerability Scanning** — Detect known security vulnerabilities in your dependencies using the GitHub Advisory Database.
+* **Bulk Operations** — Upgrade all outdated dependencies at once, consolidate inconsistent versions across modules, and manage dependency exclusions.
+
+**Getting Started**
+
+1. Install the plugin from the JetBrains Marketplace or from a ZIP via **Settings > Plugins > Install Plugin from Disk**.
+2. Open the **Unified Dependency Manager** tool window (bottom panel).
+3. Browse your installed dependencies, search for new packages, or check for updates.
+4. Configure Nexus or vulnerability scanning under **Settings > Tools > Unified Dependency Manager**.
 
 <!-- Plugin description end -->
 

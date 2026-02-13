@@ -320,7 +320,6 @@ class RepositoryManagerDialog(
                 }
             }
             SaveTarget.PLUGIN_ONLY -> {
-                // TODO: Store in plugin settings
                 Messages.showInfoMessage(
                     project,
                     message("unified.repo.manager.plugin.only.info"),
@@ -366,7 +365,7 @@ class RepositoryManagerDialog(
                 )
             }
             RepositorySource.PLUGIN_SETTINGS -> {
-                // TODO: Remove from plugin settings
+                // Plugin-only repos are not persisted yet; no removal action needed
             }
             RepositorySource.BUILTIN -> {
                 // Cannot remove built-in repos

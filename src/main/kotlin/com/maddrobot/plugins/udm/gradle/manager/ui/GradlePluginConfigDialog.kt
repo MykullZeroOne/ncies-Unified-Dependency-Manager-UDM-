@@ -201,10 +201,10 @@ class GradlePluginConfigDialog(
 
     private fun addPropertyRow(name: String, value: String) {
         val nameField = JBTextField(name, 15).apply {
-            emptyText.text = "propertyName"
+            emptyText.text = message("unified.plugin.configure.gradle.property.name.placeholder")
         }
         val valueField = JBTextField(value, 20).apply {
-            emptyText.text = "value"
+            emptyText.text = message("unified.plugin.configure.gradle.property.value.placeholder")
         }
         val removeButton = JButton(message("unified.plugin.configure.gradle.remove.property")).apply {
             preferredSize = Dimension(80, 28)

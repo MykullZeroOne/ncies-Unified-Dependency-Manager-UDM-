@@ -9,9 +9,16 @@ import com.maddrobot.plugins.udm.util.Icons
 import java.io.File
 
 /**
- * @author drawsta
- * @LastModified: 2025-07-13
- * @since 2025-07-13
+ * An action to open the containing folder of a specified file path in the system's file explorer.
+ *
+ * @constructor Initializes the action with a file path to open.
+ *
+ * @param path The absolute file path of the folder or file to reveal in the file explorer.
+ *
+ * This action retrieves the virtual file for the specified path using the local file system. If the file exists,
+ * it uses the `RevealFileAction` to open the corresponding folder in the system file explorer.
+ *
+ * The action is set to execute on the background thread (ActionUpdateThread.BGT).
  */
 class OpenContainingFolderAction(
     private val path: String

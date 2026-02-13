@@ -1,9 +1,9 @@
 package com.maddrobot.plugins.udm.maven
 
 /**
- * Maven 依赖核心信息 GAV
+ * Maven dependency core information (GAV)
  *
- * @author drawsta
+ * madd robot tech
  * @LastModified: 2025-01-20
  * @since 2025-01-20
  */
@@ -12,9 +12,17 @@ abstract class Dependency(
     open val artifactId: String,
     open val version: String
 ) {
-    // 不参与序列化的父类，必须有一个无参构造
-    // [NON_SERIALIZABLE_PARENT_MUST_HAVE_NOARG_CTOR] Impossible to make this class serializable
-    // because its parent is not serializable and does not have exactly one constructor without parameters
+    /**
+     * Constructor for the abstract Dependency class with default values.
+     *
+     * This constructor is mandatory because a non-serializable parent class must have a parameterless
+     * constructor to allow its subclasses to implement serialization. Providing this constructor ensures
+     * compatibility with serialization frameworks that require this constraint.
+     *
+     * Note:
+     * This constructor initializes the `groupId`, `artifactId`, and `version` properties to empty strings.
+     */
+
     constructor() : this("", "", "")
 
     fun getGradleGroovyDeclaration(dependencyScope: DependencyScope): String =

@@ -9,7 +9,7 @@ import com.maddrobot.plugins.udm.gradle.manager.ui.MainToolWindowPanel
  * Factory for creating the Unified Dependency Manager tool window.
  * Provides a NuGet-style interface with tabs for Packages, Repositories, Caches, and Log.
  *
- * @author drawsta
+ * madd robot tech
  * @LastModified: 2026-01-30
  * @since 2025-01-16
  */

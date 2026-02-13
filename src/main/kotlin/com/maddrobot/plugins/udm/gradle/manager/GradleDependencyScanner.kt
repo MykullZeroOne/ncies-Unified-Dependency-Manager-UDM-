@@ -20,6 +20,13 @@ import org.jetbrains.plugins.groovy.lang.psi.api.statements.blocks.GrClosableBlo
 import org.jetbrains.plugins.groovy.lang.psi.api.statements.expressions.GrMethodCall
 import java.io.File
 
+/**
+ * A utility class for scanning Gradle build files within a given project to identify and process
+ * declared dependencies. The class supports both Groovy and Kotlin DSL Gradle files and provides
+ * methods for retrieving information about installed dependencies and module build files.
+ *
+ * @param project The IntelliJ IDEA `Project` instance containing the Gradle build files to scan.
+ */
 class GradleDependencyScanner(private val project: Project) {
 
     fun scanInstalledDependencies(): List<InstalledDependency> {
@@ -35,6 +42,7 @@ class GradleDependencyScanner(private val project: Project) {
                     is GroovyFile -> {
                         dependencies.addAll(parseGroovyDependencies(psiFile, moduleName, file.path))
                     }
+
                     is KtFile -> {
                         dependencies.addAll(parseKotlinDependencies(psiFile, moduleName, file.path))
                     }
@@ -59,15 +67,16 @@ class GradleDependencyScanner(private val project: Project) {
         val buildFiles = mutableListOf<VirtualFile>()
         val basePath = project.basePath ?: return emptyList()
         val projectRoot = LocalFileSystem.getInstance().findFileByPath(basePath) ?: return emptyList()
-        
+
         fun collect(file: VirtualFile) {
             if (file.isDirectory) {
                 // Skip common non-project directories to be faster
                 if (file.name == "build" || file.name == ".gradle" || file.name == ".idea" || file.name == "node_modules") return
                 file.children.forEach { collect(it) }
             } else {
-                if (file.name == GradleConstants.DEFAULT_SCRIPT_NAME || 
-                    file.name == GradleConstants.KOTLIN_DSL_SCRIPT_NAME) {
+                if (file.name == GradleConstants.DEFAULT_SCRIPT_NAME ||
+                    file.name == GradleConstants.KOTLIN_DSL_SCRIPT_NAME
+                ) {
                     buildFiles.add(file)
                 }
             }
@@ -76,7 +85,11 @@ class GradleDependencyScanner(private val project: Project) {
         return buildFiles
     }
 
-    private fun parseGroovyDependencies(file: GroovyFile, moduleName: String, filePath: String): List<InstalledDependency> {
+    private fun parseGroovyDependencies(
+        file: GroovyFile,
+        moduleName: String,
+        filePath: String
+    ): List<InstalledDependency> {
         val result = mutableListOf<InstalledDependency>()
         PsiTreeUtil.findChildrenOfType(file, GrMethodCall::class.java).forEach { call ->
             val methodName = call.invokedExpression.text
@@ -90,17 +103,19 @@ class GradleDependencyScanner(private val project: Project) {
                         if (parts.size >= 3) {
                             // Parse exclusions from closure if present
                             val exclusions = parseGroovyExclusions(call)
-                            result.add(InstalledDependency(
-                                groupId = parts[0],
-                                artifactId = parts[1],
-                                version = parts[2],
-                                configuration = methodName,
-                                moduleName = moduleName,
-                                buildFile = filePath,
-                                offset = call.textRange.startOffset,
-                                length = call.textRange.endOffset - call.textRange.startOffset,
-                                exclusions = exclusions
-                            ))
+                            result.add(
+                                InstalledDependency(
+                                    groupId = parts[0],
+                                    artifactId = parts[1],
+                                    version = parts[2],
+                                    configuration = methodName,
+                                    moduleName = moduleName,
+                                    buildFile = filePath,
+                                    offset = call.textRange.startOffset,
+                                    length = call.textRange.endOffset - call.textRange.startOffset,
+                                    exclusions = exclusions
+                                )
+                            )
                         }
                     }
                 }
@@ -152,17 +167,19 @@ class GradleDependencyScanner(private val project: Project) {
                         if (parts.size >= 3) {
                             // Parse exclusions from trailing lambda if present
                             val exclusions = parseKotlinExclusions(call)
-                            result.add(InstalledDependency(
-                                groupId = parts[0],
-                                artifactId = parts[1],
-                                version = parts[2],
-                                configuration = methodName,
-                                moduleName = moduleName,
-                                buildFile = filePath,
-                                offset = call.textRange.startOffset,
-                                length = call.textRange.endOffset - call.textRange.startOffset,
-                                exclusions = exclusions
-                            ))
+                            result.add(
+                                InstalledDependency(
+                                    groupId = parts[0],
+                                    artifactId = parts[1],
+                                    version = parts[2],
+                                    configuration = methodName,
+                                    moduleName = moduleName,
+                                    buildFile = filePath,
+                                    offset = call.textRange.startOffset,
+                                    length = call.textRange.endOffset - call.textRange.startOffset,
+                                    exclusions = exclusions
+                                )
+                            )
                         }
                     }
                 }
@@ -205,6 +222,15 @@ class GradleDependencyScanner(private val project: Project) {
     }
 
     private fun isDependencyConfiguration(name: String): Boolean {
-        return name in listOf("implementation", "api", "testImplementation", "runtimeOnly", "compileOnly", "annotationProcessor", "testRuntimeOnly", "testCompileOnly")
+        return name in listOf(
+            "implementation",
+            "api",
+            "testImplementation",
+            "runtimeOnly",
+            "compileOnly",
+            "annotationProcessor",
+            "testRuntimeOnly",
+            "testCompileOnly"
+        )
     }
 }

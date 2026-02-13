@@ -173,13 +173,24 @@ tasks {
     }
 
     test {
+        // Unit tests use JUnit 3/4 (BasePlatformTestCase) - exclude IDE Starter integration tests
+        exclude("**/integration/**")
+    }
+
+    // Separate task for IDE Starter integration tests (JUnit 5 + Starter framework)
+    register<Test>("integrationTest") {
+        description = "Runs IDE Starter integration tests"
+        group = "verification"
+
+        // Only run integration test classes
+        include("**/integration/**")
+
         // Ensure plugin is built before running integration tests
         dependsOn(buildPlugin)
 
         // Pass the built plugin path to integration tests
         systemProperty("path.to.build.plugin", buildPlugin.get().archiveFile.get().asFile.absolutePath)
 
-        // Use JUnit 5 platform for Starter integration tests
         useJUnitPlatform()
     }
     withType<JavaExec>().configureEach {

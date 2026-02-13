@@ -7,7 +7,6 @@ import com.intellij.openapi.ui.DialogPanel
 import com.intellij.openapi.util.Disposer
 import com.intellij.ui.SearchTextField
 import com.intellij.ui.SideBorder
-import com.intellij.ui.components.TextComponentEmptyText
 import com.intellij.ui.dsl.builder.bindItem
 import com.intellij.ui.dsl.builder.panel
 import com.intellij.util.ui.NamedColorUtil
@@ -26,7 +25,7 @@ import javax.swing.Box
 import javax.swing.JPanel
 
 /**
- * @author drawsta
+ * madd robot tech
  * @LastModified: 2025-07-18
  * @since 2025-01-27
  */
@@ -47,7 +46,7 @@ class NpmToolWindow(parentDisposable: Disposable) {
                 viewport.view = borderPanel {
                     val topToolbar = boxPanel {
                         border = SideBorder(NamedColorUtil.getBoundsColor(), SideBorder.BOTTOM)
-                        // 设置 topToolbar 的高度为 50
+                        // Set the height of topToolbar to 50
                         preferredSize = Dimension(preferredSize.width, 50)
                         minimumSize = Dimension(minimumSize.width, 50)
                         maximumSize = Dimension(maximumSize.width, 50)
@@ -63,7 +62,7 @@ class NpmToolWindow(parentDisposable: Disposable) {
             add(scrollPanel, BorderLayout.CENTER)
         }
 
-        // 资源清理
+        // Resource cleanup
         Disposer.register(parentDisposable) {
             npmTable.dispose()
         }
@@ -73,17 +72,18 @@ class NpmToolWindow(parentDisposable: Disposable) {
         return SearchTextField().apply {
             // placeholder
             textEditor.emptyText.text = message("npm.table.searchField.emptyText")
-            // 聚焦搜索框时，使 placeholder 可见，不加这一行，就只能在非聚焦状态可见
-            TextComponentEmptyText.setupPlaceholderVisibility(textEditor)
+            textEditor.putClientProperty(
+                "StatusVisibleFunction",
+                java.util.function.Function<javax.swing.JTextField, Boolean> { true })
 
-            // 宽度
+            // Width
             preferredSize = Dimension(550, preferredSize.height)
             minimumSize = Dimension(550, minimumSize.height)
             maximumSize = Dimension(550, maximumSize.height)
 
             addKeyboardListener(object : KeyAdapter() {
                 override fun keyReleased(e: KeyEvent) {
-                    // 监听回车键，搜索框回车触发搜索
+                    // Listen for Enter key to trigger search from the search field
                     if (e.keyCode == KeyEvent.VK_ENTER) {
                         handleSearch(text.trim())
                     }
@@ -97,7 +97,7 @@ class NpmToolWindow(parentDisposable: Disposable) {
         ApplicationManager.getApplication().executeOnPooledThread {
             val npmObjects = NpmRegistryService.search(text)
             ApplicationManager.getApplication().invokeLater {
-                // 刷新表格，更新表格所有数据为搜索结果
+                // Refresh the table and update all rows with the search results
                 npmTable.refreshTable(npmObjects)
                 npmTable.showLoading(false)
             }

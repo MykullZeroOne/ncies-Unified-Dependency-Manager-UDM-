@@ -28,7 +28,7 @@ class ManageExclusionsDialog(
 
     private val transitiveDependencyService = TransitiveDependencyService.getInstance(project)
     private val checkBoxList = CheckBoxList<DependencyItem>()
-    private val loadingLabel = JBLabel("Loading dependencies...").apply {
+    private val loadingLabel = JBLabel(message("unified.exclusion.manage.loading")).apply {
         icon = AllIcons.Process.Step_1
         foreground = JBColor.GRAY
     }
@@ -40,8 +40,8 @@ class ManageExclusionsDialog(
     private val existingExclusions: Set<String> = pkg.exclusions.map { it.id }.toSet()
 
     init {
-        title = "Manage Exclusions for ${pkg.id}"
-        setOKButtonText("Add Selected Exclusions")
+        title = message("unified.exclusion.manage.title", pkg.id)
+        setOKButtonText(message("unified.exclusion.manage.button"))
         init()
         loadTransitiveDependencies()
     }
@@ -55,9 +55,7 @@ class ManageExclusionsDialog(
         // Header with instructions
         val headerPanel = JPanel(BorderLayout()).apply {
             border = JBUI.Borders.emptyBottom(12)
-            add(JBLabel("<html><b>Select transitive dependencies to exclude</b><br>" +
-                "<font color='gray'>Selected dependencies will be added as exclusions to ${pkg.id}.<br>" +
-                "Already excluded dependencies are shown but disabled.</font></html>"), BorderLayout.CENTER)
+            add(JBLabel(message("unified.exclusion.manage.header", pkg.id)), BorderLayout.CENTER)
         }
         mainPanel.add(headerPanel, BorderLayout.NORTH)
 
@@ -70,11 +68,11 @@ class ManageExclusionsDialog(
             layout = BoxLayout(this, BoxLayout.X_AXIS)
             border = JBUI.Borders.emptyTop(8)
 
-            add(JButton("Select All").apply {
+            add(JButton(message("unified.exclusion.manage.select.all")).apply {
                 addActionListener { selectAll(true) }
             })
             add(Box.createHorizontalStrut(8))
-            add(JButton("Deselect All").apply {
+            add(JButton(message("unified.exclusion.manage.deselect.all")).apply {
                 addActionListener { selectAll(false) }
             })
             add(Box.createHorizontalGlue())
@@ -100,7 +98,7 @@ class ManageExclusionsDialog(
         contentPanel.removeAll()
 
         if (dependencies.isEmpty()) {
-            contentPanel.add(JBLabel("No transitive dependencies found.").apply {
+            contentPanel.add(JBLabel(message("unified.exclusion.manage.empty")).apply {
                 horizontalAlignment = SwingConstants.CENTER
                 foreground = JBColor.GRAY
             }, BorderLayout.CENTER)
@@ -108,7 +106,7 @@ class ManageExclusionsDialog(
             // Populate checkbox list
             val items = dependencies.map { dep ->
                 val coordinate = "${dep.groupId}:${dep.artifactId}"
-                val versionStr = dep.version ?: "managed"
+                val versionStr = dep.version ?: message("unified.tree.dialog.version.managed")
                 val displayText = "$coordinate:$versionStr"
                 val isAlreadyExcluded = existingExclusions.contains(coordinate) ||
                     existingExclusions.contains(dep.groupId)
@@ -189,6 +187,6 @@ class ManageExclusionsDialog(
         val displayText: String,
         val isAlreadyExcluded: Boolean
     ) {
-        override fun toString(): String = if (isAlreadyExcluded) "$displayText (already excluded)" else displayText
+        override fun toString(): String = if (isAlreadyExcluded) "$displayText ${message("unified.exclusion.manage.already.excluded")}" else displayText
     }
 }

@@ -23,7 +23,7 @@ import java.time.format.DateTimeFormatter
 object LicenseKeyGenerator {
 
     // IMPORTANT: Keep this in sync with LicenseChecker.LICENSE_SALT
-    private const val LICENSE_SALT = "UDM-2026-KEYSTONE-SALT"
+    private const val LICENSE_SALT = "UDM-2026-MADDROBOT-SALT"
 
     /**
      * Generate a license key for a customer

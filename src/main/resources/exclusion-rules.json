@@ -1,0 +1,205 @@
+{
+  "knownProblematic": [
+    {
+      "groupId": "commons-logging",
+      "artifactId": "commons-logging",
+      "reason": "Conflicts with SLF4J. Use jcl-over-slf4j bridge instead.",
+      "severity": "warning",
+      "conditions": {
+        "whenPresent": ["org.slf4j:slf4j-api"]
+      }
+    },
+    {
+      "groupId": "commons-logging",
+      "artifactId": "commons-logging-api",
+      "reason": "Legacy logging API. Conflicts with SLF4J bridging.",
+      "severity": "warning",
+      "conditions": {
+        "whenPresent": ["org.slf4j:slf4j-api"]
+      }
+    },
+    {
+      "groupId": "log4j",
+      "artifactId": "log4j",
+      "reason": "Log4j 1.x is EOL with known vulnerabilities (CVE-2019-17571). Use log4j-over-slf4j or upgrade to Log4j 2.x.",
+      "severity": "critical"
+    },
+    {
+      "groupId": "org.slf4j",
+      "artifactId": "slf4j-log4j12",
+      "reason": "Bridges SLF4J to Log4j 1.x which is EOL. Use slf4j-reload4j or logback instead.",
+      "severity": "warning"
+    },
+    {
+      "groupId": "javax.servlet",
+      "artifactId": "servlet-api",
+      "reason": "Legacy servlet API. Jakarta EE projects should use jakarta.servlet-api instead.",
+      "severity": "info",
+      "conditions": {
+        "whenPresent": ["jakarta.servlet:jakarta.servlet-api"]
+      }
+    },
+    {
+      "groupId": "javax.servlet",
+      "artifactId": "javax.servlet-api",
+      "reason": "Legacy javax servlet API. Jakarta EE projects should use jakarta.servlet-api.",
+      "severity": "info",
+      "conditions": {
+        "whenPresent": ["jakarta.servlet:jakarta.servlet-api"]
+      }
+    },
+    {
+      "groupId": "javax.annotation",
+      "artifactId": "javax.annotation-api",
+      "reason": "Superseded by jakarta.annotation-api in Jakarta EE.",
+      "severity": "info",
+      "conditions": {
+        "whenPresent": ["jakarta.annotation:jakarta.annotation-api"]
+      }
+    },
+    {
+      "groupId": "javax.xml.bind",
+      "artifactId": "jaxb-api",
+      "reason": "Removed from JDK 11+. Use jakarta.xml.bind:jakarta.xml.bind-api instead.",
+      "severity": "warning"
+    },
+    {
+      "groupId": "javax.activation",
+      "artifactId": "activation",
+      "reason": "Legacy JavaBeans Activation Framework. Use jakarta.activation:jakarta.activation-api.",
+      "severity": "info"
+    },
+    {
+      "groupId": "org.hamcrest",
+      "artifactId": "hamcrest-core",
+      "reason": "Superseded by org.hamcrest:hamcrest (unified artifact). Often pulled transitively by older JUnit.",
+      "severity": "info",
+      "conditions": {
+        "whenPresent": ["org.hamcrest:hamcrest"]
+      }
+    },
+    {
+      "groupId": "junit",
+      "artifactId": "junit",
+      "reason": "JUnit 4 pulled transitively. Exclude if project uses JUnit 5 exclusively.",
+      "severity": "info",
+      "conditions": {
+        "whenPresent": ["org.junit.jupiter:junit-jupiter"]
+      }
+    },
+    {
+      "groupId": "org.apache.httpcomponents",
+      "artifactId": "httpclient",
+      "reason": "Apache HttpClient 4.x is in maintenance mode. Consider excluding if using HttpClient 5.x.",
+      "severity": "info",
+      "conditions": {
+        "whenPresent": ["org.apache.httpcomponents.client5:httpclient5"]
+      }
+    },
+    {
+      "groupId": "com.google.code.findbugs",
+      "artifactId": "jsr305",
+      "reason": "Dormant project. Annotations conflict with jakarta.annotation and SpotBugs annotations.",
+      "severity": "info"
+    },
+    {
+      "groupId": "com.google.code.findbugs",
+      "artifactId": "annotations",
+      "reason": "Dormant project. Use com.github.spotbugs:spotbugs-annotations instead.",
+      "severity": "info"
+    },
+    {
+      "groupId": "com.sun.xml.bind",
+      "artifactId": "jaxb-impl",
+      "reason": "Legacy JAXB implementation. Use org.glassfish.jaxb:jaxb-runtime instead.",
+      "severity": "warning"
+    },
+    {
+      "groupId": "aopalliance",
+      "artifactId": "aopalliance",
+      "reason": "AOP Alliance interfaces are included in Spring Framework. Transitive copy causes classpath conflicts.",
+      "severity": "info",
+      "conditions": {
+        "whenPresent": ["org.springframework:spring-aop"]
+      }
+    },
+    {
+      "groupId": "stax",
+      "artifactId": "stax-api",
+      "reason": "StAX API is included in JDK since Java 6. Transitive dependency is unnecessary.",
+      "severity": "info"
+    },
+    {
+      "groupId": "xml-apis",
+      "artifactId": "xml-apis",
+      "reason": "XML APIs are included in JDK. Transitive dependency can cause classpath conflicts.",
+      "severity": "warning"
+    },
+    {
+      "groupId": "xerces",
+      "artifactId": "xercesImpl",
+      "reason": "Xerces is included in JDK. Transitive dependency can cause XML parser conflicts.",
+      "severity": "warning"
+    },
+    {
+      "groupId": "org.apache.logging.log4j",
+      "artifactId": "log4j-to-slf4j",
+      "reason": "Creates circular logging when used alongside log4j-slf4j-impl or log4j-slf4j2-impl.",
+      "severity": "critical",
+      "conditions": {
+        "whenPresent": ["org.apache.logging.log4j:log4j-slf4j-impl"]
+      }
+    },
+    {
+      "groupId": "ch.qos.logback",
+      "artifactId": "logback-classic",
+      "reason": "Multiple SLF4J bindings detected. Only one SLF4J binding should be on the classpath.",
+      "severity": "warning",
+      "conditions": {
+        "whenPresent": ["org.apache.logging.log4j:log4j-slf4j2-impl"]
+      }
+    },
+    {
+      "groupId": "org.bouncycastle",
+      "artifactId": "bcprov-jdk15on",
+      "reason": "Legacy Bouncy Castle artifact. Use bcprov-jdk18on for JDK 8+ compatibility.",
+      "severity": "info",
+      "conditions": {
+        "whenPresent": ["org.bouncycastle:bcprov-jdk18on"]
+      }
+    },
+    {
+      "groupId": "com.google.guava",
+      "artifactId": "guava-jdk5",
+      "reason": "Legacy Guava JDK5 backport. Use the main com.google.guava:guava artifact.",
+      "severity": "warning"
+    },
+    {
+      "groupId": "com.google.guava",
+      "artifactId": "listenablefuture",
+      "reason": "Empty artifact that conflicts with Guava. Should be excluded when Guava is present.",
+      "severity": "info",
+      "conditions": {
+        "whenPresent": ["com.google.guava:guava"]
+      }
+    },
+    {
+      "groupId": "org.jetbrains.kotlin",
+      "artifactId": "kotlin-stdlib-jdk7",
+      "reason": "Merged into kotlin-stdlib since Kotlin 1.8. Transitive dependency is unnecessary.",
+      "severity": "info",
+      "conditions": {
+        "whenPresent": ["org.jetbrains.kotlin:kotlin-stdlib"]
+      }
+    },
+    {
+      "groupId": "org.jetbrains.kotlin",
+      "artifactId": "kotlin-stdlib-jdk8",
+      "reason": "Merged into kotlin-stdlib since Kotlin 1.8. Transitive dependency is unnecessary.",
+      "severity": "info",
+      "conditions": {
+        "whenPresent": ["org.jetbrains.kotlin:kotlin-stdlib"]
+      }
+    }
+  ]
+}

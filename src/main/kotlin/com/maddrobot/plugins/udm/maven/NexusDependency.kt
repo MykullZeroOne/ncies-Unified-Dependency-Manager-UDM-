@@ -4,9 +4,9 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /**
- * 从 Nexus 私服仓库查询到的 Maven 依赖包信息模型
+ * Maven dependency model retrieved from a Nexus private repository
  *
- * @author drawsta
+ * madd robot tech
  * @LastModified: 2025-07-07
  * @since 2025-07-07
  */

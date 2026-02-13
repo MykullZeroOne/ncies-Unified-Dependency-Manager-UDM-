@@ -35,7 +35,7 @@ class UiFeatureTest {
     private val di = DI {
         bindSingleton<CIServer>(overrides = true) {
             object : CIServer by NoCIServer {
-                override fun reportTestFailure(
+                fun reportTestFailure(
                     testName: String,
                     message: String,
                     details: String
@@ -75,8 +75,8 @@ class UiFeatureTest {
             .useDriverAndCloseIde {
                 waitForIndicators(2.minutes)
 
-                // Open the UDP tool window
-                invokeAction("ActivateUnified Dependency Manager (UDP)ToolWindow")
+                // Open the UDM tool window
+                invokeAction("ActivateUnified Dependency Manager (UDM)ToolWindow")
                 Thread.sleep(1000)
 
                 // Verify the tool window opened (no exception thrown)
@@ -95,7 +95,7 @@ class UiFeatureTest {
                 waitForIndicators(2.minutes)
 
                 // Open tool window
-                invokeAction("ActivateUnified Dependency Manager (UDP)ToolWindow")
+                invokeAction("ActivateUnified Dependency Manager (UDM)ToolWindow")
                 Thread.sleep(1000)
 
                 // Trigger refresh (standard IDE refresh action)
@@ -139,7 +139,7 @@ class UiFeatureTest {
                 waitForIndicators(2.minutes)
 
                 // Open tool window
-                invokeAction("ActivateUnified Dependency Manager (UDP)ToolWindow")
+                invokeAction("ActivateUnified Dependency Manager (UDM)ToolWindow")
                 Thread.sleep(1000)
 
                 // In dev mode (udm.dev.mode=true), premium features should work
@@ -161,7 +161,7 @@ class UiFeatureTest {
                 waitForIndicators(2.minutes)
 
                 // Open tool window
-                invokeAction("ActivateUnified Dependency Manager (UDP)ToolWindow")
+                invokeAction("ActivateUnified Dependency Manager (UDM)ToolWindow")
                 Thread.sleep(1000)
 
                 // Focus search field using Find action
@@ -216,7 +216,7 @@ class UiFeatureTest {
                 waitForIndicators(2.minutes)
 
                 // Open tool window
-                invokeAction("ActivateUnified Dependency Manager (UDP)ToolWindow")
+                invokeAction("ActivateUnified Dependency Manager (UDM)ToolWindow")
                 Thread.sleep(1000)
 
                 // Development mode should allow premium features
@@ -239,7 +239,7 @@ class UiFeatureTest {
                 waitForIndicators(2.minutes)
 
                 // Open tool window
-                invokeAction("ActivateUnified Dependency Manager (UDP)ToolWindow")
+                invokeAction("ActivateUnified Dependency Manager (UDM)ToolWindow")
                 Thread.sleep(1000)
 
                 // Invoke refresh via action

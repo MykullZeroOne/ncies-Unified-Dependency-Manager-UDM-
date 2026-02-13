@@ -4,11 +4,20 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /**
- * 从 Maven 中央仓库查询到的 Maven 依赖包信息模型
+ * Represents a Maven dependency retrieved from a central repository, encapsulating information
+ * about the group ID, artifact ID, version, packaging, timestamp, and available extensions or classifiers.
  *
- * @author drawsta
- * @LastModified: 2025-01-20
- * @since 2025-01-20
+ * This class extends the [Dependency] class, inheriting the group ID, artifact ID, and version properties.
+ *
+ * @property id Unique identifier for the dependency.
+ * @property groupId Group identifier of the dependency, serialized as "g".
+ * @property artifactId Artifact identifier of the dependency, serialized as "a".
+ * @property version Version of the dependency, serialized as "v".
+ * @property packaging Specifies the packaging type of the artifact (e.g., jar, pom).
+ * @property timestamp Timestamp of the dependency, typically indicating when it was published.
+ * @property ec A list of extensions or classifiers associated with the dependency.
+ *         This includes information such as source jars, documentation jars, and POM files,
+ *         representing the available artifacts for the dependency.
  */
 @Serializable
 data class CentralDependency(
@@ -22,10 +31,6 @@ data class CentralDependency(
     @SerialName("p")
     val packaging: String,
     val timestamp: Long,
-    // 标识 Maven 构件的扩展名（Extension）和分类器（Classifier），
-    // 比如 -sources.jar、.jar、-javadoc.jar、.pom、.pom.sha512、.module、.jar.asc.sha512 等
-    // 同时也标识了该构件提供的制品（比如 ec 数组中只有 .jar、.pom，则表示该构件只发布了 jar 包和 pom 文件，没有源码包、javadoc 等制品）
-    // 可以参考 https://search.maven.org/solrsearch/select?q=g:org.json+AND+a:json&core=gav&rows=200&wt=json
     val ec: List<String>
 ) : Dependency(groupId, artifactId, version)
 

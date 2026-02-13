@@ -12,6 +12,18 @@ import java.io.File
 import javax.swing.JComponent
 import javax.swing.JPanel
 
+/**
+ * A dialog that provides a side-by-side diff view of two versions of content, typically used to preview and compare
+ * changes before they are applied. This dialog displays the original content and the new modified content, allowing
+ * users to review the differences in a user-friendly interface.
+ *
+ * @constructor Creates a new instance of the dialog.
+ * @param project The IntelliJ IDEA project instance associated with this dialog.
+ * @param filePath The path of the file being previewed.
+ * @param originalContent The original content of the file before any modifications.
+ * @param newContent The modified content to compare against the original content.
+ * @param title The title of the dialog, defaults to a localized preview title string.
+ */
 class PreviewDiffDialog(
     private val project: Project,
     private val filePath: String,
@@ -32,7 +44,7 @@ class PreviewDiffDialog(
 
         val factory = DiffContentFactory.getInstance()
         val file = LocalFileSystem.getInstance().findFileByPath(filePath)
-        
+
         val content1 = if (file != null) factory.create(project, file) else factory.create(originalContent)
         val content2 = factory.create(project, newContent)
 
@@ -46,7 +58,7 @@ class PreviewDiffDialog(
 
         val diffPanel = DiffManager.getInstance().createRequestPanel(project, disposable, null)
         diffPanel.setRequest(request)
-        
+
         panel.add(diffPanel.component, BorderLayout.CENTER)
         return panel
     }

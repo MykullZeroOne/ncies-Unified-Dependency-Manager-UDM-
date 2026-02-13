@@ -6,7 +6,7 @@ import com.maddrobot.plugins.udm.ui.TableColumnInfo
 import com.maddrobot.plugins.udm.ui.PaginatedListTableModel
 
 /**
- * @author drawsta
+ * madd robot tech
  * @LastModified: 2025-07-14
  * @since 2025-07-14
  */

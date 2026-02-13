@@ -9,9 +9,9 @@ import com.maddrobot.plugins.udm.util.showInformationNotification
 import java.awt.event.MouseEvent
 
 /**
- * Npm Package 表格
+ * NPM package table
  *
- * @author drawsta
+ * madd robot tech
  * @LastModified: 2025-07-18
  * @since 2025-01-27
  */

@@ -13,9 +13,9 @@ import com.maddrobot.plugins.udm.util.showInformationNotification
 import java.awt.event.MouseEvent
 
 /**
- * Maven 依赖包信息表格
+ * Maven dependency table
  *
- * @author drawsta
+ * madd robot tech
  * @LastModified: 2025-07-13
  * @since 2025-01-18
  */
@@ -26,15 +26,15 @@ class MavenTable : PaginatedTable<Dependency>(MavenDependencyTableModel()) {
     var dependencyScope: DependencyScope = DependencyScope.COMPILE
 
     override fun mouseClickedInTable(e: MouseEvent?, selectedRow: Int) {
-        // 获取当前选中行的数据
+        // Get the currently selected row's data
         val selectedDependency = tableModel.getItem(selectedRow)
 
-        // 鼠标左键双击表格行时，直接复制依赖声明
+        // On left-button double-click, copy the dependency declaration
         if (e?.clickCount == 2) {
-            // 复制选中的依赖到剪贴板
+            // Copy the selected dependency to the clipboard
             copyDependencyToClipboard(selectedDependency)
         }
-        // 鼠标右键时，显示一个菜单
+        // On right-click, show a context menu
         if (e?.let { MouseButton.fromEvent(it) } == MouseButton.Right) {
             DependencyActionGroup.showContextMenu(e, selectedDependency)
         }

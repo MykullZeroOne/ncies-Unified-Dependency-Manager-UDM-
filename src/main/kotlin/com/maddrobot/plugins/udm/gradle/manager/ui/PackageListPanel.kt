@@ -785,7 +785,7 @@ class PackageListPanel(
                     add(nameLabel.apply {
                         font = font.deriveFont(Font.BOLD, 13f)
                     })
-                    add(JBLabel("by").apply {
+                    add(JBLabel(message("unified.tooltip.by")).apply {
                         foreground = JBColor.GRAY
                         font = font.deriveFont(11f)
                     })
@@ -841,8 +841,8 @@ class PackageListPanel(
             publisherLabel.foreground = if (isSelected) textColor else JBColor.GRAY
 
             // Description - truncate if too long
-            val desc = pkg.description?.take(100)?.let {
-                if (pkg.description!!.length > 100) "$it..." else it
+            val desc = pkg.description?.let { description ->
+                if (description.length > 100) "${description.take(100)}..." else description
             } ?: message("unified.details.no.description")
             descriptionLabel.text = desc
             descriptionLabel.foreground = if (isSelected) textColor else JBColor.GRAY
@@ -892,28 +892,28 @@ class PackageListPanel(
             sb.append("<b>${pkg.id}</b><br>")
 
             if (pkg.isInstalled) {
-                sb.append("Installed: ${pkg.installedVersion}<br>")
+                sb.append(message("unified.tooltip.installed", pkg.installedVersion ?: "")).append("<br>")
             }
             if (status.hasUpdate) {
-                sb.append("<font color='green'>Update available: ${status.updateVersion}</font><br>")
+                sb.append("<font color='green'>").append(message("unified.tooltip.update", status.updateVersion ?: "")).append("</font><br>")
             }
             if (status.isVulnerable) {
-                sb.append("<font color='red'>Security vulnerability detected</font><br>")
+                sb.append("<font color='red'>").append(message("unified.tooltip.vulnerable")).append("</font><br>")
                 status.vulnerabilityInfo?.let { vuln ->
-                    vuln.cveId?.let { sb.append("CVE: $it<br>") }
-                    sb.append("Severity: ${vuln.severity}<br>")
-                    vuln.fixedVersion?.let { sb.append("Fixed in: $it<br>") }
+                    vuln.cveId?.let { sb.append(message("unified.tooltip.vulnerable.cve", it)).append("<br>") }
+                    sb.append(message("unified.tooltip.vulnerable.severity", vuln.severity)).append("<br>")
+                    vuln.fixedVersion?.let { sb.append(message("unified.tooltip.vulnerable.fixed", it)).append("<br>") }
                 }
             }
             if (status.isDeprecated) {
-                sb.append("<font color='orange'>Deprecated</font><br>")
+                sb.append("<font color='orange'>").append(message("unified.tooltip.deprecated")).append("</font><br>")
                 status.deprecationMessage?.let { sb.append(it) }
             }
             if (status.isTransitive) {
-                sb.append("<font color='gray'>Transitive dependency (cannot be modified directly)</font><br>")
+                sb.append("<font color='gray'>").append(message("unified.tooltip.transitive")).append("</font><br>")
             }
             if (status.isPrerelease) {
-                sb.append("<font color='purple'>Prerelease version</font><br>")
+                sb.append("<font color='purple'>").append(message("unified.tooltip.prerelease")).append("</font><br>")
             }
 
             sb.append("</html>")

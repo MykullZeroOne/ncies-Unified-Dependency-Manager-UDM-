@@ -18,25 +18,40 @@ import com.maddrobot.plugins.udm.maven.NexusDependency
 import java.awt.event.MouseEvent
 
 /**
- * Maven Dependency 表格行右键菜单 Action
- *
- * @author drawsta
- * @LastModified: 2025-09-08
- * @since 2025-01-26
+ * Represents an action group for handling dependency-related operations in an IntelliJ-based plugin.
+ * It provides contextual actions for different types of dependencies, including central, local, and Nexus dependencies.
  */
 object DependencyActionGroup : ActionGroup() {
 
     private lateinit var selectedDependency: com.maddrobot.plugins.udm.maven.Dependency
 
+    /**
+     * Specifies the thread on which updates for this action are processed.
+     *
+     * This method overrides the `getActionUpdateThread` from the `AnAction` class
+     * to define that updates for the action are performed on a background thread (`BGT`).
+     *
+     * Background threads are suitable for performing non-UI tasks to ensure that
+     * time-consuming updates do not block the UI thread.
+     *
+     * @return The thread type used for action updates. Always returns `ActionUpdateThread.BGT`.
+     */
     override fun getActionUpdateThread() = ActionUpdateThread.BGT
 
+    /**
+     * Retrieves an array of actions based on the selected dependency type and optionally a given project.
+     *
+     * @param e An optional event parameter that provides the context, including the associated project.
+     * @return An array of actions tailored to the type of the selected dependency, allowing operations such as downloading artifacts,
+     *         searching in repositories, or opening containing folders, as well as actions specific to the project context if available.
+     */
     override fun getChildren(e: AnActionEvent?): Array<AnAction> {
         val project = e?.project
         val baseActions = when (selectedDependency) {
             is CentralDependency -> {
                 val centralDependency = selectedDependency as CentralDependency
 
-                // 建立 ec -> downloadUrl 映射
+                // Build ec -> downloadUrl mapping
                 val ecMap = centralDependency.ec.associateWith { ec ->
                     mavenDownloadUrl(
                         group = centralDependency.groupId,
@@ -64,7 +79,7 @@ object DependencyActionGroup : ActionGroup() {
 
             is NexusDependency -> {
                 val downloadInfos = (selectedDependency as NexusDependency).downloadInfos
-                // 建立 extension -> downloadUrl 映射
+                // Build extension -> downloadUrl mapping
                 val extMap = downloadInfos.associateBy { it.extension }
 
                 listOfNotNull(
@@ -102,23 +117,53 @@ object DependencyActionGroup : ActionGroup() {
         return baseActions.toTypedArray()
     }
 
-    class AddToProjectAction(private val project: com.intellij.openapi.project.Project, private val dependency: Dependency) : AnAction("Add to Project") {
+    /**
+     * An action that facilitates adding a dependency to a Gradle module in an IntelliJ-based project.
+     *
+     * This action scans the project's Gradle build files to identify the modules available for
+     * dependency addition. Upon invocation, it presents a dialog to the user to select the target
+     * module, dependency version, and configuration. After these selections, a preview is displayed
+     * to show the changes before applying them to the appropriate Gradle build file.
+     *
+     * The action integrates with IntelliJ's infrastructure and uses background thread execution for
+     * updates to ensure responsiveness.
+     *
+     * @property project The IntelliJ project in which the action is performed.
+     * @property dependency The dependency information that needs to be added to the project.
+     * @constructor Creates an instance of AddToProjectAction with the given project and dependency.
+     */
+    class AddToProjectAction(
+        private val project: com.intellij.openapi.project.Project,
+        private val dependency: Dependency
+    ) : AnAction("Add to Project") {
         override fun getActionUpdateThread() = ActionUpdateThread.BGT
         override fun actionPerformed(e: AnActionEvent) {
             val scanner = GradleDependencyScanner(project)
             val modifier = GradleDependencyModifier(project)
             val moduleFiles = scanner.getModuleBuildFiles()
             val modules = moduleFiles.keys.toList()
-            
-            val dialog = AddDependencyDialog(project, dependency.groupId, dependency.artifactId, listOf(dependency.version), modules)
+
+            val dialog = AddDependencyDialog(
+                project,
+                dependency.groupId,
+                dependency.artifactId,
+                listOf(dependency.version),
+                modules
+            )
             if (dialog.showAndGet()) {
                 val selectedBuildFile = moduleFiles[dialog.selectedModule]?.path ?: return
                 val virtualFile = moduleFiles[dialog.selectedModule] ?: return
                 val document = FileDocumentManager.getInstance().getDocument(virtualFile) ?: return
-                
+
                 val originalContent = document.text
-                val newContent = modifier.getAddedContent(selectedBuildFile, dependency.groupId, dependency.artifactId, dialog.selectedVersion, dialog.selectedConfiguration)
-                
+                val newContent = modifier.getAddedContent(
+                    selectedBuildFile,
+                    dependency.groupId,
+                    dependency.artifactId,
+                    dialog.selectedVersion,
+                    dialog.selectedConfiguration
+                )
+
                 if (newContent != null) {
                     val previewDialog = PreviewDiffDialog(project, selectedBuildFile, originalContent, newContent)
                     if (previewDialog.showAndGet()) {
@@ -129,6 +174,13 @@ object DependencyActionGroup : ActionGroup() {
         }
     }
 
+    /**
+     * Displays a context menu at the location of a mouse event. The context menu
+     * contains actions related to the specified dependency.
+     *
+     * @param e the mouse event indicating where to show the context menu
+     * @param selectedDependency the dependency for which the context menu is being shown
+     */
     fun showContextMenu(e: MouseEvent, selectedDependency: Dependency) {
         this.selectedDependency = selectedDependency
         val popupMenu =

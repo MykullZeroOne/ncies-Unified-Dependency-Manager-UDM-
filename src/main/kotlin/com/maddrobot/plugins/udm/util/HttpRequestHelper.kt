@@ -5,7 +5,7 @@ import java.net.HttpURLConnection
 import java.util.Base64
 
 /**
- * @author drawsta
+ * madd robot tech
  * @LastModified: 2026-01-30
  * @since 2025-07-12
  */

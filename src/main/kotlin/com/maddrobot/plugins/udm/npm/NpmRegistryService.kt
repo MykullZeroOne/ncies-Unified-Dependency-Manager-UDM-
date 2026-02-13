@@ -5,11 +5,19 @@ import com.maddrobot.plugins.udm.util.HttpRequestHelper
 import com.maddrobot.plugins.udm.util.showErrorDialog
 
 /**
- * refer Npm Registry API Doc: https://github.com/npm/registry/blob/main/docs/REGISTRY-API.md
+ * Provides services for interacting with the NPM Registry.
  *
- * @author drawsta
- * @LastModified: 2025-07-16
- * @since 2025-01-27
+ * This class is responsible for performing search operations against the NPM Registry API. It
+ * constructs the appropriate request URLs, handles HTTP requests, parses responses, and processes
+ * the data obtained from the API.
+ *
+ * Functionality includes:
+ * - Searching the NPM Registry based on keywords.
+ * - Parsing JSON responses into model objects such as `NpmRegistrySearchResult`.
+ * - Handling errors and displaying error messages to the user.
+ *
+ * The main purpose of this class is to facilitate seamless interaction with the NPM Registry
+ * without requiring the consumer to handle HTTP requests or JSON parsing directly.
  */
 object NpmRegistryService {
 
@@ -31,7 +39,7 @@ object NpmRegistryService {
     }
 
     private fun parseResponse(responseBody: String): NpmRegistrySearchResult {
-        val json = Json { ignoreUnknownKeys = true } // 反序列化时忽略掉类中不存在的属性
+        val json = Json { ignoreUnknownKeys = true } // Ignore unknown properties during deserialization
         return json.decodeFromString(NpmRegistrySearchResult.serializer(), responseBody)
     }
 

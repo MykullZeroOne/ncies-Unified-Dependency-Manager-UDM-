@@ -84,7 +84,7 @@ class PackageDetailsPanel(
         preferredSize = Dimension(150, preferredSize.height)
         renderer = VersionListCellRenderer()
     }
-    private val applyVersionButton = JButton("Apply").apply {
+    private val applyVersionButton = JButton(message("unified.details.button.apply")).apply {
         isVisible = false
     }
     private var isLoadingVersions = false
@@ -490,7 +490,7 @@ class PackageDetailsPanel(
     }
 
     private fun setupVersionSelector() {
-        versionSelectorPanel.add(JBLabel("Version:").apply {
+        versionSelectorPanel.add(JBLabel(message("unified.label.version")).apply {
             foreground = labelColor
             border = JBUI.Borders.emptyRight(8)
         })
@@ -543,15 +543,15 @@ class PackageDetailsPanel(
         val selectedVersion = selectedItem.version
         val installedVersion = pkg.installedVersion
 
-        if (selectedVersion == installedVersion || selectedVersion == "Loading...") {
+        if (selectedVersion == installedVersion || selectedVersion == message("unified.details.version.loading")) {
             applyVersionButton.isVisible = false
         } else {
             applyVersionButton.isVisible = true
             if (installedVersion != null && isVersionNewer(selectedVersion, installedVersion)) {
-                applyVersionButton.text = "Upgrade to $selectedVersion"
+                applyVersionButton.text = message("unified.details.button.upgrade.to", selectedVersion)
                 applyVersionButton.icon = AllIcons.Actions.Upload
             } else {
-                applyVersionButton.text = "Downgrade to $selectedVersion"
+                applyVersionButton.text = message("unified.details.button.downgrade.to", selectedVersion)
                 applyVersionButton.icon = AllIcons.Actions.Download
             }
         }
@@ -562,7 +562,7 @@ class PackageDetailsPanel(
     private fun setupSourceRepoPanel() {
         sourceRepoPanel.border = JBUI.Borders.emptyBottom(12)
 
-        sourceRepoPanel.add(JBLabel("Install from:").apply {
+        sourceRepoPanel.add(JBLabel(message("unified.label.install.from")).apply {
             foreground = labelColor
             border = JBUI.Borders.emptyRight(8)
         })
@@ -583,7 +583,7 @@ class PackageDetailsPanel(
 
         isLoadingVersions = true
         versionComboBox.removeAllItems()
-        versionComboBox.addItem(VersionItem("Loading...", false, false))
+        versionComboBox.addItem(VersionItem(message("unified.details.version.loading"), false, false))
 
         onVersionsNeeded?.invoke(pkg) { versions ->
             SwingUtilities.invokeLater {
@@ -645,7 +645,7 @@ class PackageDetailsPanel(
             if (value is VersionItem) {
                 text = buildString {
                     append(value.version)
-                    if (value.isInstalled) append(" (installed)")
+                    if (value.isInstalled) append(" ${message("unified.details.version.installed")}")
                 }
 
                 // Show update indicator (green arrow) for newer versions
@@ -922,7 +922,7 @@ class PackageDetailsPanel(
         val parts = coordinate.split(":")
         val displayName = if (parts.size >= 2) "${parts[0]}:${parts[1]}" else coordinate
 
-        val addExclusionItem = JMenuItem("Add \"$displayName\" to Exclusions", AllIcons.Actions.Cancel)
+        val addExclusionItem = JMenuItem(message("unified.details.context.add.exclusion", displayName), AllIcons.Actions.Cancel)
         addExclusionItem.addActionListener {
             onExclusionAddFromDependencyRequested?.invoke(pkg, coordinate)
         }
@@ -930,7 +930,7 @@ class PackageDetailsPanel(
 
         // Add copy coordinate option
         popup.addSeparator()
-        val copyItem = JMenuItem("Copy Coordinate", AllIcons.Actions.Copy)
+        val copyItem = JMenuItem(message("unified.details.context.copy.coordinate"), AllIcons.Actions.Copy)
         copyItem.addActionListener {
             val clipboard = Toolkit.getDefaultToolkit().systemClipboard
             clipboard.setContents(java.awt.datatransfer.StringSelection(coordinate), null)
@@ -1330,9 +1330,10 @@ class PackageDetailsPanel(
                 // Add "Update to fix" button
                 add(Box.createHorizontalStrut(8))
                 add(JButton(message("unified.vulnerability.update.to.fix")).apply {
-                    toolTipText = "Update to ${vulnInfo.fixedVersion} to fix this vulnerability"
+                    toolTipText = message("unified.vulnerability.update.to.fix.tooltip", vulnInfo.fixedVersion ?: "")
                     addActionListener {
-                        onUpdateRequested?.invoke(pkg, vulnInfo.fixedVersion!!)
+                        val fixVersion = vulnInfo.fixedVersion ?: return@addActionListener
+                        onUpdateRequested?.invoke(pkg, fixVersion)
                     }
                 })
             }
@@ -1668,7 +1669,7 @@ private class InstallPackageDialog(
 
             // Show source repository selector if multiple repos available
             if (availableRepos.size > 1) {
-                row("Source Repository:") {
+                row(message("unified.details.label.source.repo")) {
                     val repoNames = availableRepos.map { "${it.name} ${it.version?.let { v -> "($v)" } ?: ""}" }
                     comboBox(repoNames).applyToComponent {
                         selectedIndex = availableRepos.indexOfFirst { it.id == selectedSourceRepo?.id }.coerceAtLeast(0)
@@ -1678,7 +1679,7 @@ private class InstallPackageDialog(
                     }
                 }
             } else if (availableRepos.size == 1) {
-                row("Source Repository:") {
+                row(message("unified.details.label.source.repo")) {
                     label(availableRepos.first().name).applyToComponent {
                         foreground = JBColor.GRAY
                     }

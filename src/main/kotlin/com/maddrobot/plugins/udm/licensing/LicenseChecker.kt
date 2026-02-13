@@ -36,7 +36,7 @@ class LicenseChecker : PersistentStateComponent<LicenseChecker.LicenseState> {
         private const val JETBRAINS_PRODUCT_CODE = ""  // e.g., "PUDM"
 
         // Secret salt for custom license validation (change this for production!)
-        private const val LICENSE_SALT = "UDM-2026-KEYSTONE-SALT"
+        private const val LICENSE_SALT = "UDM-2026-MADDROBOT-SALT"
 
         // Format: UDM-YYYYMMDD-XXXXXXXX (expiry date + hash)
         private val LICENSE_PATTERN = Regex("^UDM-(\\d{8})-([A-Z0-9]{8})$")
@@ -309,6 +309,7 @@ enum class Feature(val tier: LicenseChecker.Tier, val displayName: String) {
     DEPENDENCY_TREE(LicenseChecker.Tier.PREMIUM, "Dependency Tree"),
     TRANSITIVE_ANALYSIS(LicenseChecker.Tier.PREMIUM, "Transitive Dependency Analysis"),
     EXCLUSION_MANAGEMENT(LicenseChecker.Tier.PREMIUM, "Dependency Exclusions"),
+    EXCLUSION_SUGGESTIONS(LicenseChecker.Tier.PREMIUM, "Exclusion Suggestions"),
     PRIVATE_REPOS(LicenseChecker.Tier.PREMIUM, "Private Repositories"),
     REPO_CREDENTIALS(LicenseChecker.Tier.PREMIUM, "Repository Credentials"),
     VULNERABILITY_ALLOWLIST(LicenseChecker.Tier.PREMIUM, "Vulnerability Allowlist"),

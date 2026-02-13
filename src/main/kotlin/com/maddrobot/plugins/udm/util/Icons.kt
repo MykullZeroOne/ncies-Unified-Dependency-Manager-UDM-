@@ -5,7 +5,7 @@ import com.intellij.ui.JBColor
 import javax.swing.Icon
 
 /**
- * @author drawsta
+ * madd robot tech
  * @LastModified: 2025-07-14
  * @since 2025-01-23
  */

@@ -11,7 +11,7 @@ import java.io.IOException
 /**
  * ref: https://plugins.gradle.org/
  *
- * @author drawsta
+ * madd robot tech
  * @LastModified: 2025-07-20
  * @since 2025-02-05
  */

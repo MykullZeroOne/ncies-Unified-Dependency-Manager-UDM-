@@ -4,9 +4,9 @@ import com.maddrobot.plugins.udm.util.Icons
 import javax.swing.Icon
 
 /**
- * Maven 仓库来源
+ * Maven repository source
  *
- * @author drawsta
+ * madd robot tech
  * @LastModified: 2025-07-07
  * @since 2025-01-23
  */

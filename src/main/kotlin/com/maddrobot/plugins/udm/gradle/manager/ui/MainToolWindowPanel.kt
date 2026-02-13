@@ -70,11 +70,11 @@ class MainToolWindowPanel(
             border = JBUI.Borders.empty(4, 8, 0, 8)
             background = JBColor.PanelBackground
 
-            // Left side: UDP logo/title and tabs
+            // Left side: UDM logo/title and tabs
             val leftPanel = JPanel(FlowLayout(FlowLayout.LEFT, 0, 0)).apply {
                 isOpaque = false
 
-                // UDP logo/title
+                // UDM logo/title
                 add(JBLabel(message("unified.main.title")).apply {
                     font = font.deriveFont(Font.BOLD, 14f)
                     icon = AllIcons.Nodes.PpLib
@@ -246,12 +246,12 @@ class MainToolWindowPanel(
 
                 if (responseCode in 200..399) {
                     val authInfo = if (selected.username != null || selected.password != null) " (authenticated)" else ""
-                    Messages.showInfoMessage(project, "Successfully connected to ${selected.name}$authInfo", "Test Connection")
+                    Messages.showInfoMessage(project, message("unified.repo.manager.test.success", "${selected.name}$authInfo"), message("unified.repo.manager.test.title"))
                 } else {
-                    Messages.showWarningDialog(project, "Connection failed with HTTP status: $responseCode", "Test Connection")
+                    Messages.showWarningDialog(project, message("unified.repo.manager.test.failed", responseCode), message("unified.repo.manager.test.title"))
                 }
             } catch (e: Exception) {
-                Messages.showErrorDialog(project, "Connection error: ${e.localizedMessage}", "Test Connection")
+                Messages.showErrorDialog(project, message("unified.repo.manager.test.error", e.localizedMessage ?: ""), message("unified.repo.manager.test.title"))
             }
         }
 
@@ -269,24 +269,20 @@ class MainToolWindowPanel(
             .setRemoveAction {
                 val selected = repositoryList.selectedValue ?: return@setRemoveAction
                 if (selected.source == RepositorySource.BUILTIN) {
-                    Messages.showWarningDialog(project, "Built-in repositories cannot be removed.", "Remove Repository")
+                    Messages.showWarningDialog(project, message("unified.repo.manager.remove.builtin.warning"), message("unified.repo.manager.remove.title"))
                     return@setRemoveAction
                 }
                 val result = Messages.showYesNoDialog(
                     project,
-                    "Are you sure you want to remove \"${selected.name}\"?",
-                    "Remove Repository",
+                    message("unified.repo.manager.remove.confirm", selected.name),
+                    message("unified.repo.manager.remove.title"),
                     Messages.getQuestionIcon()
                 )
                 if (result == Messages.YES) {
-                    // For now, show manual removal instructions
                     Messages.showInfoMessage(
                         project,
-                        "Please manually remove this repository from your build configuration:\n\n" +
-                            "• Gradle: Remove from settings.gradle or build.gradle\n" +
-                            "• Maven: Remove from ~/.m2/settings.xml or pom.xml\n\n" +
-                            "Source: ${selected.source.name.lowercase().replace("_", " ")}",
-                        "Remove Repository"
+                        message("unified.repo.panel.remove.manual", selected.source.name.lowercase().replace("_", " ")),
+                        message("unified.repo.manager.remove.title")
                     )
                     loadRepositories()
                 }
@@ -294,7 +290,7 @@ class MainToolWindowPanel(
             .setEditAction {
                 val selected = repositoryList.selectedValue ?: return@setEditAction
                 if (selected.source == RepositorySource.BUILTIN) {
-                    Messages.showWarningDialog(project, "Built-in repositories cannot be edited.", "Edit Repository")
+                    Messages.showWarningDialog(project, message("unified.repo.manager.edit.builtin.warning"), message("unified.repo.manager.edit.title"))
                     return@setEditAction
                 }
                 val dialog = AddEditRepositoryDialog(project, selected)
@@ -305,11 +301,11 @@ class MainToolWindowPanel(
                     }
                 }
             }
-            .addExtraAction(object : AnAction("Test Connection", "Test connection to selected repository", AllIcons.Actions.Lightning) {
+            .addExtraAction(object : AnAction(message("unified.repo.manager.button.test"), message("unified.repo.manager.button.test.tooltip"), AllIcons.Actions.Lightning) {
                 override fun actionPerformed(e: AnActionEvent) = testConnection()
                 override fun getActionUpdateThread() = ActionUpdateThread.EDT
             })
-            .addExtraAction(object : AnAction("Refresh", "Refresh repository list", AllIcons.Actions.Refresh) {
+            .addExtraAction(object : AnAction(message("unified.main.refresh"), message("unified.repo.panel.refresh.tooltip"), AllIcons.Actions.Refresh) {
                 override fun actionPerformed(e: AnActionEvent) = loadRepositories()
                 override fun getActionUpdateThread() = ActionUpdateThread.EDT
             })
@@ -323,9 +319,7 @@ class MainToolWindowPanel(
             // Info panel at top
             val infoPanel = JPanel(BorderLayout()).apply {
                 border = JBUI.Borders.emptyBottom(8)
-                add(JBLabel("<html><b>Configured Repositories</b><br>" +
-                    "<font color='gray'>Repositories are discovered from your build configuration. " +
-                    "Add new repositories to make them available for dependency search.</font></html>"), BorderLayout.CENTER)
+                add(JBLabel(message("unified.repo.panel.header")), BorderLayout.CENTER)
             }
 
             add(infoPanel, BorderLayout.NORTH)
@@ -334,10 +328,10 @@ class MainToolWindowPanel(
             // Legend panel at bottom
             val legendPanel = JPanel(FlowLayout(FlowLayout.LEFT, 16, 4)).apply {
                 border = JBUI.Borders.emptyTop(8)
-                add(JBLabel("<html><font color='gray'>Sources:</font></html>"))
-                add(JBLabel("<html><font color='#666666'>builtin</font> = Default repos</html>"))
-                add(JBLabel("<html><font color='#666666'>gradle settings/build</font> = From Gradle files</html>"))
-                add(JBLabel("<html><font color='#666666'>maven settings</font> = From ~/.m2/settings.xml or pom.xml</html>"))
+                add(JBLabel(message("unified.repo.panel.legend.sources")))
+                add(JBLabel(message("unified.repo.panel.legend.builtin")))
+                add(JBLabel(message("unified.repo.panel.legend.gradle")))
+                add(JBLabel(message("unified.repo.panel.legend.maven")))
             }
             add(legendPanel, BorderLayout.SOUTH)
         }
@@ -351,16 +345,16 @@ class MainToolWindowPanel(
                     val result = configWriter.getGradleRepositoryAddition(repo, targetFile)
                     if (result != null) {
                         val (original, modified) = result
-                        val previewDialog = PreviewDiffDialog(project, targetFile.path, original, modified, "Preview Repository Addition")
+                        val previewDialog = PreviewDiffDialog(project, targetFile.path, original, modified, message("unified.repo.manager.preview.title"))
                         if (previewDialog.showAndGet()) {
-                            configWriter.applyGradleChanges(targetFile, modified, "Add Repository: ${repo.name}")
+                            configWriter.applyGradleChanges(targetFile, modified, "${message("unified.repo.manager.add.title")}: ${repo.name}")
                             if (repo.username != null || repo.password != null) {
-                                Messages.showInfoMessage(project, "Repository added to ${targetFile.name}.\nCredentials saved to ~/.gradle/gradle.properties", "Add Repository")
+                                Messages.showInfoMessage(project, message("unified.repo.panel.credentials.saved.gradle", targetFile.name), message("unified.repo.manager.add.title"))
                             }
                             loadRepositories()
                         }
                     } else {
-                        Messages.showInfoMessage(project, "This repository already exists in the configuration.", "Add Repository")
+                        Messages.showInfoMessage(project, message("unified.repo.manager.already.exists"), message("unified.repo.manager.add.title"))
                     }
                 }
             }
@@ -369,9 +363,9 @@ class MainToolWindowPanel(
                 if (result != null) {
                     val (original, modified) = result
                     val confirm = if (original.isEmpty()) {
-                        Messages.showYesNoDialog(project, "This will create a new ~/.m2/settings.xml file. Continue?", "Add Repository", Messages.getQuestionIcon())
+                        Messages.showYesNoDialog(project, message("unified.repo.manager.maven.create.confirm"), message("unified.repo.manager.add.title"), Messages.getQuestionIcon())
                     } else {
-                        Messages.showYesNoDialog(project, "This will modify your ~/.m2/settings.xml file. Continue?", "Add Repository", Messages.getQuestionIcon())
+                        Messages.showYesNoDialog(project, message("unified.repo.manager.maven.modify.confirm"), message("unified.repo.manager.add.title"), Messages.getQuestionIcon())
                     }
                     if (confirm == Messages.YES) {
                         configWriter.applyMavenChanges(modified)
@@ -385,27 +379,27 @@ class MainToolWindowPanel(
                     val result = configWriter.getPomRepositoryAddition(repo, pomFile)
                     if (result != null) {
                         val (original, modified) = result
-                        val previewDialog = PreviewDiffDialog(project, pomFile.path, original, modified, "Preview Repository Addition")
+                        val previewDialog = PreviewDiffDialog(project, pomFile.path, original, modified, message("unified.repo.manager.preview.title"))
                         if (previewDialog.showAndGet()) {
-                            configWriter.applyPomChanges(pomFile, modified, "Add Repository: ${repo.name}")
+                            configWriter.applyPomChanges(pomFile, modified, "${message("unified.repo.manager.add.title")}: ${repo.name}")
                             if (repo.username != null || repo.password != null) {
                                 val settingsResult = configWriter.getMavenRepositoryAddition(repo)
                                 if (settingsResult != null) {
                                     configWriter.applyMavenChanges(settingsResult.second)
                                 }
-                                Messages.showInfoMessage(project, "Repository added to pom.xml.\nCredentials saved to ~/.m2/settings.xml", "Add Repository")
+                                Messages.showInfoMessage(project, message("unified.repo.panel.credentials.saved.pom"), message("unified.repo.manager.add.title"))
                             }
                             loadRepositories()
                         }
                     } else {
-                        Messages.showInfoMessage(project, "This repository already exists in the configuration.", "Add Repository")
+                        Messages.showInfoMessage(project, message("unified.repo.manager.already.exists"), message("unified.repo.manager.add.title"))
                     }
                 } else {
-                    Messages.showErrorDialog(project, "No pom.xml found in project root.", "Add Repository")
+                    Messages.showErrorDialog(project, message("unified.repo.panel.no.pom"), message("unified.repo.manager.add.title"))
                 }
             }
             SaveTarget.PLUGIN_ONLY -> {
-                Messages.showInfoMessage(project, "Repository saved to plugin settings only. It will not affect CLI builds.", "Add Repository")
+                Messages.showInfoMessage(project, message("unified.repo.manager.plugin.only.info"), message("unified.repo.manager.add.title"))
             }
         }
     }
@@ -434,9 +428,7 @@ class MainToolWindowPanel(
             // Header panel with description
             val headerPanel = JPanel(BorderLayout()).apply {
                 border = JBUI.Borders.emptyBottom(12)
-                add(JBLabel("<html><b>Package Cache</b><br>" +
-                    "<font color='gray'>Caching reduces network calls and improves performance. " +
-                    "Version lookups are cached for 1 hour, search results for 5 minutes.</font></html>"), BorderLayout.CENTER)
+                add(JBLabel(message("unified.cache.panel.header")), BorderLayout.CENTER)
             }
             add(headerPanel, BorderLayout.NORTH)
 
@@ -449,47 +441,47 @@ class MainToolWindowPanel(
             val buttonPanel = JPanel(FlowLayout(FlowLayout.LEFT, 8, 8)).apply {
                 border = JBUI.Borders.emptyTop(8)
 
-                add(JButton("Refresh Stats").apply {
+                add(JButton(message("unified.cache.button.refresh")).apply {
                     icon = AllIcons.Actions.Refresh
                     addActionListener {
                         refreshStats()
                     }
                 })
 
-                add(JButton("Clear Version Cache").apply {
+                add(JButton(message("unified.cache.button.clear.version")).apply {
                     icon = AllIcons.Actions.GC
-                    toolTipText = "Clear cached version lookups (1 hour TTL)"
+                    toolTipText = message("unified.cache.button.clear.version.tooltip")
                     addActionListener {
                         cacheService.clearVersionCache()
                         refreshStats()
-                        Messages.showInfoMessage(project, "Version cache cleared.", "Cache Cleared")
+                        Messages.showInfoMessage(project, message("unified.cache.cleared.version"), message("unified.cache.cleared.title"))
                     }
                 })
 
-                add(JButton("Clear Search Cache").apply {
+                add(JButton(message("unified.cache.button.clear.search")).apply {
                     icon = AllIcons.Actions.GC
-                    toolTipText = "Clear cached search results (5 minute TTL)"
+                    toolTipText = message("unified.cache.button.clear.search.tooltip")
                     addActionListener {
                         cacheService.clearSearchCache()
                         refreshStats()
-                        Messages.showInfoMessage(project, "Search cache cleared.", "Cache Cleared")
+                        Messages.showInfoMessage(project, message("unified.cache.cleared.search"), message("unified.cache.cleared.title"))
                     }
                 })
 
-                add(JButton("Clear All Caches").apply {
+                add(JButton(message("unified.cache.button.clear.all")).apply {
                     icon = AllIcons.Actions.Restart
-                    toolTipText = "Clear all cached data"
+                    toolTipText = message("unified.cache.button.clear.all.tooltip")
                     addActionListener {
                         val result = Messages.showYesNoDialog(
                             project,
-                            "Are you sure you want to clear all caches?",
-                            "Clear All Caches",
+                            message("unified.cache.clear.all.confirm"),
+                            message("unified.cache.button.clear.all"),
                             Messages.getQuestionIcon()
                         )
                         if (result == Messages.YES) {
                             cacheService.clearAll()
                             refreshStats()
-                            Messages.showInfoMessage(project, "All caches cleared.", "Cache Cleared")
+                            Messages.showInfoMessage(project, message("unified.cache.cleared.all"), message("unified.cache.cleared.title"))
                         }
                     }
                 })
@@ -531,14 +523,14 @@ class MainToolWindowPanel(
         return JPanel(BorderLayout()).apply {
             // Toolbar with clear button
             val toolbar = JPanel(FlowLayout(FlowLayout.LEFT, 4, 4)).apply {
-                add(JButton("Clear").apply {
+                add(JButton(message("unified.log.button.clear")).apply {
                     icon = AllIcons.Actions.GC
                     addActionListener {
                         logTextArea.text = ""
                         logService.clear()
                     }
                 })
-                add(JButton("Copy").apply {
+                add(JButton(message("unified.log.button.copy")).apply {
                     icon = AllIcons.Actions.Copy
                     addActionListener {
                         logTextArea.selectAll()
@@ -547,14 +539,6 @@ class MainToolWindowPanel(
                     }
                 })
 
-                // Log level filter (for future use)
-                add(Box.createHorizontalStrut(20))
-                add(JBLabel("Filter:"))
-                add(JComboBox(arrayOf("All", "Info", "Warn", "Error")).apply {
-                    addActionListener {
-                        // TODO: Implement log level filtering
-                    }
-                })
             }
 
             add(toolbar, BorderLayout.NORTH)

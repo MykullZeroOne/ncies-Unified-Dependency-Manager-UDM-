@@ -12,7 +12,7 @@ import com.maddrobot.plugins.udm.ui.PaginatedTable
 import java.awt.event.MouseEvent
 
 /**
- * @author drawsta
+ * madd robot tech
  * @LastModified: 2025-07-14
  * @since 2025-07-14
  */
@@ -32,13 +32,13 @@ class GradlePluginTable : PaginatedTable<GradlePluginInfo>(GradlePluginInfoTable
     override fun createPaginationPanel(): DialogPanel {
         return panel {
             row {
-                // 上一页
+                // Previous page
                 button(PackageFinderBundle.message("table.pagination.previous")) {
                     if (prevHref.isNotEmpty()) {
                         loadPageData(prevHref)
                     }
                 }.visibleIf(hasPrevHrefProperty)
-                // 下一页
+                // Next page
                 button(PackageFinderBundle.message("table.pagination.next")) {
                     if (nextHref.isNotEmpty()) {
                         loadPageData(nextHref)
@@ -52,7 +52,7 @@ class GradlePluginTable : PaginatedTable<GradlePluginInfo>(GradlePluginInfoTable
         tableModel.updateTableData(data.first)
         refreshTable(1)
 
-        // 更新上一页、下一页 page link
+        // Update previous and next page links
         prevHref = data.second
         nextHref = data.third
 
@@ -65,7 +65,7 @@ class GradlePluginTable : PaginatedTable<GradlePluginInfo>(GradlePluginInfoTable
         ApplicationManager.getApplication().executeOnPooledThread {
             val pluginInfoTriple = GradlePluginPortalService.searchPage(pageLink)
             ApplicationManager.getApplication().invokeLater {
-                // 刷新表格，更新表格所有数据为搜索结果
+                // Refresh the table and update all rows to the search results
                 refreshTable(pluginInfoTriple)
                 showLoading(false)
             }

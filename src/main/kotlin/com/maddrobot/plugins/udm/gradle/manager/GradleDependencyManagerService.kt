@@ -9,6 +9,20 @@ import com.intellij.openapi.vfs.newvfs.events.VFileEvent
 import com.intellij.util.messages.Topic
 import org.jetbrains.plugins.gradle.util.GradleConstants
 
+/**
+ * Service responsible for managing and tracking Gradle dependencies within a project.
+ *
+ * This service provides functionality to scan the project's Gradle files for installed dependencies,
+ * check for available updates, and notify listeners when changes occur to the dependencies.
+ *
+ * The service is project-level and integrates with IntelliJ's messaging and file system event mechanisms
+ * to ensure real-time updates when Gradle-related files are modified.
+ *
+ * @constructor Initializes the service with the given project and sets up file system change listeners
+ * for Gradle build scripts.
+ *
+ * @param project The IntelliJ project associated with this service.
+ */
 @Service(Service.Level.PROJECT)
 class GradleDependencyManagerService(private val project: Project) {
 
@@ -28,7 +42,8 @@ class GradleDependencyManagerService(private val project: Project) {
     companion object {
         val DEPENDENCY_CHANGE_TOPIC = Topic.create("Dependency Change", DependencyChangeListener::class.java)
 
-        fun getInstance(project: Project): GradleDependencyManagerService = project.getService(GradleDependencyManagerService::class.java)
+        fun getInstance(project: Project): GradleDependencyManagerService =
+            project.getService(GradleDependencyManagerService::class.java)
     }
 
     init {

@@ -25,7 +25,7 @@ import kotlin.time.Duration.Companion.minutes
  * Note: First run will download the IDE, which takes some time.
  * Subsequent runs use cached IDE installations.
  *
- * @author drawsta
+ * madd robot tech
  * @since 2025-02-03
  */
 class PluginIntegrationTest {
@@ -34,7 +34,7 @@ class PluginIntegrationTest {
     private val di = DI {
         bindSingleton<CIServer>(overrides = true) {
             object : CIServer by NoCIServer {
-                override fun reportTestFailure(
+                fun reportTestFailure(
                     testName: String,
                     message: String,
                     details: String
@@ -97,8 +97,8 @@ class PluginIntegrationTest {
             waitForIndicators(2.minutes)
 
             // Tool windows have auto-generated action IDs in format: ActivateXxxToolWindow
-            // For "Unified Dependency Manager (UDP)" tool window
-            invokeAction("ActivateUnified Dependency Manager (UDP)ToolWindow")
+            // For "Unified Dependency Manager (UDM)" tool window
+            invokeAction("ActivateUnified Dependency Manager (UDM)ToolWindow")
 
             // Give UI time to update
             Thread.sleep(1000)

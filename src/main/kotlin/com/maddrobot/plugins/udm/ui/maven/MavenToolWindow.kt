@@ -10,7 +10,6 @@ import com.intellij.openapi.util.Disposer
 import com.intellij.ui.DocumentAdapter
 import com.intellij.ui.SearchTextField
 import com.intellij.ui.SideBorder
-import com.intellij.ui.components.TextComponentEmptyText
 import com.intellij.ui.dsl.builder.bindItem
 import com.intellij.ui.dsl.builder.panel
 import com.intellij.util.ui.NamedColorUtil
@@ -34,7 +33,7 @@ import javax.swing.event.DocumentEvent
 /**
  * refer com.jetbrains.python.packaging.toolwindow.packages.table.PyPackagesTable
  *
- * @author drawsta
+ * madd robot tech
  * @LastModified: 2025-09-08
  * @since 2025-01-16
  */
@@ -79,7 +78,7 @@ class MavenToolWindow(parentDisposable: Disposable) {
                 }
             })
 
-        // 资源清理
+        // Resource cleanup
         Disposer.register(parentDisposable) {
             mavenTable.dispose()
         }
@@ -89,13 +88,13 @@ class MavenToolWindow(parentDisposable: Disposable) {
         return borderPanel {
             val topToolbar = boxPanel {
                 border = SideBorder(NamedColorUtil.getBoundsColor(), SideBorder.BOTTOM)
-                // 设置 topToolbar 的高度为 50
+                // Set the height of topToolbar to 50
                 preferredSize = Dimension(preferredSize.width, 50)
                 minimumSize = Dimension(minimumSize.width, 50)
                 maximumSize = Dimension(maximumSize.width, 50)
 
                 add(searchTextField)
-                // 间距
+                // Spacing
                 add(Box.createRigidArea(Dimension(10, 0)))
 
                 add(repositoryAndDependencyFormatPanel())
@@ -113,17 +112,18 @@ class MavenToolWindow(parentDisposable: Disposable) {
         return SearchTextField().apply {
             // placeholder
             textEditor.emptyText.text = message("maven.table.searchField.emptyText")
-            // 聚焦搜索框时，使 placeholder 可见，不加这一行，就只能在非聚焦状态可见
-            TextComponentEmptyText.setupPlaceholderVisibility(textEditor)
+            textEditor.putClientProperty(
+                "StatusVisibleFunction",
+                java.util.function.Function<javax.swing.JTextField, Boolean> { true })
 
-            // 宽度
+            // Width
             preferredSize = Dimension(450, preferredSize.height)
             minimumSize = Dimension(450, minimumSize.height)
             maximumSize = Dimension(450, maximumSize.height)
 
             addKeyboardListener(object : KeyAdapter() {
                 override fun keyReleased(e: KeyEvent) {
-                    // 监听回车键，搜索框回车触发搜索
+                    // Listen for Enter key to trigger search from the search field
                     if (e.keyCode == KeyEvent.VK_ENTER) {
                         handleSearch(text.trim())
                     }
@@ -132,7 +132,7 @@ class MavenToolWindow(parentDisposable: Disposable) {
 
             addDocumentListener(object : DocumentAdapter() {
                 override fun textChanged(p0: DocumentEvent) {
-                    // 点击 SearchTextField 搜索框右边的清空按钮时
+                    // When clicking the clear button on the right side of the SearchTextField
                     if (textEditor.text.isEmpty()) {
                         refreshTable()
                     }
@@ -144,15 +144,15 @@ class MavenToolWindow(parentDisposable: Disposable) {
     private fun createToolbar(panel: JPanel): ActionToolbar {
         val group = DefaultActionGroup()
 
-        // 重/加载指定 Maven 仓库来源的包数据
-        // 鼠标光标停留在 action 上时，text 为光标的悬浮提示，description 显示在 IDE 左下角
+        // Reload package data for the selected Maven repository source
+        // On hover: 'text' is the tooltip; 'description' is shown in the IDE status bar
         val reloadIconButtonAction = object : DumbAwareAction(
             message("maven.table.ReloadButton.text"),
             message("maven.table.ReloadButton.description"),
             Icons.REFRESH.getThemeBasedIcon()
         ) {
             override fun actionPerformed(e: AnActionEvent) {
-                // 清空搜索框
+                // Clear the search field
                 searchTextField.text = ""
 
                 lodadAndCacheLocalDependencies()
@@ -160,7 +160,7 @@ class MavenToolWindow(parentDisposable: Disposable) {
             }
 
             override fun update(e: AnActionEvent) {
-                // 当仓库来源选择本地仓库时，重新加载数据的按钮才可见
+                // The reload button is only visible when the Local repository is selected
                 e.presentation.isEnabledAndVisible = repoSource == MavenRepositorySource.LOCAL
             }
 
@@ -182,28 +182,28 @@ class MavenToolWindow(parentDisposable: Disposable) {
     private fun repositoryAndDependencyFormatPanel(): DialogPanel {
         return panel {
             row {
-                // Maven 仓库来源 https://mvnrepository.com/repos
+                // Maven repository source https://mvnrepository.com/repos
                 comboBox(MavenRepositorySource.entries, PackageFinderListCellRenderer)
                     .label(message("maven.RepositorySource.label"))
                     .bindItem(repoSourceProperty)
                     .onChanged {
-                        // 切换仓库来源后，还原表格及分页条到切换前的状态
+                        // After switching repository source, restore the table and pagination to their previous state
                         refreshTable(it.item)
                     }
-                // 依赖作用域
+                // Dependency scope
                 comboBox(DependencyScope.entries, PackageFinderListCellRenderer)
                     .label(message("maven.DependencyScope.label"))
                     .bindItem(dependencyScopeProperty)
                     .onChanged {
-                        // 切换依赖作用域后，修改表格模型中的依赖作用域成员
+                        // After switching dependency scope, update the table model's dependency scope
                         mavenTable.dependencyScope = it.item
                     }
-                // 依赖声明格式
+                // Dependency declaration format
                 comboBox(DependencyFormat.entries, PackageFinderListCellRenderer)
                     .label(message("maven.DependencyFormat.label"))
                     .bindItem(dependencyFormatProperty)
                     .onChanged {
-                        // 切换依赖声明格式后，修改表格模型中的依赖声明成员
+                        // After switching dependency format, update the table model's dependency declaration
                         mavenTable.dependencyFormat = it.item
                     }
             }
@@ -239,7 +239,7 @@ class MavenToolWindow(parentDisposable: Disposable) {
                 }
             }
             ApplicationManager.getApplication().invokeLater {
-                // 刷新表格，更新表格所有数据为搜索结果
+                // Refresh the table and update all rows with the search results
                 mavenTable.refreshTable(searchResult, repoSource)
                 mavenTable.showLoading(false)
             }
@@ -260,8 +260,8 @@ class MavenToolWindow(parentDisposable: Disposable) {
     }
 
     private fun refreshTable(selectedRepoSource: MavenRepositorySource = repoSource) {
-        // 还原（清空搜索时，还原表格到搜索前的状态），或更新（执行搜索，或加载本地 Maven 依赖包信息时）表格所有数据
-        // 更新了所有数据，同时也是更新当前页数据
+        // Restore all table data when search is cleared, or update all data when searching/loading local Maven dependencies
+        // Updating all data also updates the current page data
         when (selectedRepoSource) {
             MavenRepositorySource.CENTRAL -> {
                 searchTextField.textEditor.emptyText.text = message("maven.table.searchField.emptyText")

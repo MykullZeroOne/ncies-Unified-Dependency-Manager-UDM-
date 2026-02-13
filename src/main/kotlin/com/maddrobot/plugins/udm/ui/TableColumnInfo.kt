@@ -3,7 +3,7 @@ package com.maddrobot.plugins.udm.ui
 import com.intellij.util.ui.ColumnInfo
 
 /**
- * @author drawsta
+ * madd robot tech
  * @LastModified: 2025-01-21
  * @since 2025-01-21
  */

@@ -5,7 +5,6 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.util.Disposer
 import com.intellij.ui.SearchTextField
 import com.intellij.ui.SideBorder
-import com.intellij.ui.components.TextComponentEmptyText
 import com.intellij.util.ui.NamedColorUtil
 import com.maddrobot.plugins.udm.PackageFinderBundle
 import com.maddrobot.plugins.udm.gradle.GradlePluginPortalService
@@ -19,7 +18,7 @@ import java.awt.event.KeyEvent
 import javax.swing.JPanel
 
 /**
- * @author drawsta
+ * madd robot tech
  * @LastModified: 2025-07-14
  * @since 2025-07-14
  */
@@ -36,7 +35,7 @@ class GradlePluginToolWindow(parentDisposable: Disposable) {
                 viewport.view = borderPanel {
                     val topToolbar = boxPanel {
                         border = SideBorder(NamedColorUtil.getBoundsColor(), SideBorder.BOTTOM)
-                        // 设置 topToolbar 的高度为 50
+                        // Set the height of topToolbar to 50
                         preferredSize = Dimension(preferredSize.width, 50)
                         minimumSize = Dimension(minimumSize.width, 50)
                         maximumSize = Dimension(maximumSize.width, 50)
@@ -50,7 +49,7 @@ class GradlePluginToolWindow(parentDisposable: Disposable) {
             add(scrollPanel, BorderLayout.CENTER)
         }
 
-        // 资源清理
+        // Resource cleanup
         Disposer.register(parentDisposable) {
             gradlePluginTable.dispose()
         }
@@ -61,17 +60,18 @@ class GradlePluginToolWindow(parentDisposable: Disposable) {
             // placeholder
             textEditor.emptyText.text =
                 PackageFinderBundle.message("GradlePlugin.table.searchField.emptyText")
-            // 聚焦搜索框时，使 placeholder 可见，不加这一行，就只能在非聚焦状态可见
-            TextComponentEmptyText.setupPlaceholderVisibility(textEditor)
+            textEditor.putClientProperty(
+                "StatusVisibleFunction",
+                java.util.function.Function<javax.swing.JTextField, Boolean> { true })
 
-            // 宽度
+            // Width
             preferredSize = Dimension(550, preferredSize.height)
             minimumSize = Dimension(550, minimumSize.height)
             maximumSize = Dimension(550, maximumSize.height)
 
             addKeyboardListener(object : KeyAdapter() {
                 override fun keyReleased(e: KeyEvent) {
-                    // 监听回车键，搜索框回车触发搜索
+                    // Listen for Enter key to trigger search from the search field
                     if (e.keyCode == KeyEvent.VK_ENTER) {
                         handleSearch(text.trim())
                     }
@@ -86,7 +86,7 @@ class GradlePluginToolWindow(parentDisposable: Disposable) {
         ApplicationManager.getApplication().executeOnPooledThread {
             val pluginInfoTriple = GradlePluginPortalService.searchBy(text)
             ApplicationManager.getApplication().invokeLater {
-                // 刷新表格，更新表格所有数据为搜索结果
+                // Refresh the table and update all rows with the search results
                 gradlePluginTable.refreshTable(pluginInfoTriple)
                 gradlePluginTable.showLoading(false)
             }

@@ -11,9 +11,9 @@ import java.nio.file.Files
 import java.nio.file.Path
 
 /**
- * 本地 Maven 依赖包模型
+ * Local Maven dependency model
  *
- * @author drawsta
+ * madd robot tech
  * @LastModified: 2025-01-20
  * @since 2025-01-20
  */
@@ -30,7 +30,7 @@ data class LocalDependency(
         private val MAVEN_LOCAL_REPOSITORY: Path = Path.of(System.getProperty("user.home"), ".m2/repository")
         private val log = Logger.getInstance(LocalDependency::class.java)
 
-        // 工厂方法，简化 LocalDependency 的构建
+        // Factory method to simplify LocalDependency construction
         fun from(model: Model, pomFilePath: String): LocalDependency {
             val modelParent: Parent? = model.parent
             val artifactId: String = model.artifactId ?: N_A
@@ -65,7 +65,7 @@ data class LocalDependency(
         }
 
         /**
-         * 从 [Model] 中提取 Maven 依赖包元信息
+         * Extract Maven dependency metadata from the [Model]
          */
         private fun parsePom(pomPath: Path): Dependency? {
             return try {

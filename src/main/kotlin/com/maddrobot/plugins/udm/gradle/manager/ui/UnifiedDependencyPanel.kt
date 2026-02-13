@@ -49,8 +49,12 @@ import com.maddrobot.plugins.udm.ui.PrereleaseToggleAction
 import com.maddrobot.plugins.udm.ui.RefreshAction
 import com.maddrobot.plugins.udm.ui.UpgradeAllAction
 import com.maddrobot.plugins.udm.ui.ConsolidateAction
+import com.maddrobot.plugins.udm.ui.ExclusionSuggestionAction
 import com.maddrobot.plugins.udm.ui.RepositorySettingsAction
 import com.maddrobot.plugins.udm.ui.UdmToolbarActionGroup
+import com.maddrobot.plugins.udm.gradle.manager.service.BuildSystem
+import com.intellij.openapi.progress.ProgressIndicator
+import com.intellij.openapi.progress.Task
 import com.maddrobot.plugins.udm.licensing.Feature
 import com.maddrobot.plugins.udm.licensing.LicenseChecker
 import com.maddrobot.plugins.udm.licensing.PremiumFeatureGuard
@@ -134,7 +138,6 @@ class UnifiedDependencyPanel(
     }
     private val prereleaseToggleAction = PrereleaseToggleAction { includePrerelease ->
         uiLog.info("Prerelease filter: $includePrerelease", "Toolbar")
-        // TODO: Apply prerelease filter to search/list
     }
     private val refreshAction = RefreshAction {
         if (isGradleProject) {
@@ -149,6 +152,9 @@ class UnifiedDependencyPanel(
     }
     private val consolidateAction = ConsolidateAction(project) {
         showConsolidateDialog()
+    }
+    private val exclusionSuggestionAction = ExclusionSuggestionAction(project) {
+        showExclusionSuggestionDialog()
     }
     private val settingsAction = RepositorySettingsAction {
         showRepositoryManager()
@@ -228,6 +234,7 @@ class UnifiedDependencyPanel(
                 feedSelectorAction = feedSelectorAction,
                 prereleaseToggleAction = prereleaseToggleAction,
                 refreshAction = refreshAction,
+                exclusionSuggestionAction = exclusionSuggestionAction,
                 upgradeAllAction = upgradeAllAction,
                 consolidateAction = consolidateAction,
                 settingsAction = settingsAction
@@ -239,7 +246,6 @@ class UnifiedDependencyPanel(
                 actionGroup,
                 true // horizontal
             )
-            toolbar.layoutPolicy = ActionToolbar.AUTO_LAYOUT_POLICY
             toolbar.targetComponent = this
 
             add(toolbar.component, BorderLayout.CENTER)
@@ -488,7 +494,10 @@ class UnifiedDependencyPanel(
                         } else {
                             "NO CREDENTIALS"
                         }
-                        uiLog.info("Repository: ${repo.name} | id='${repo.id}' | type=${repo.type} | source=${repo.source} | $authInfo", "Init")
+                        uiLog.info(
+                            "Repository: ${repo.name} | id='${repo.id}' | type=${repo.type} | source=${repo.source} | $authInfo",
+                            "Init"
+                        )
                     }
 
                     uiLog.info("Feed selector initialized with ${repos.size} repositories", "Init")
@@ -539,7 +548,10 @@ class UnifiedDependencyPanel(
                 } else {
                     "NO CREDENTIALS"
                 }
-                uiLog.info("Repository: ${repo.name} | id='${repo.id}' | type=${repo.type} | source=${repo.source} | $authInfo", "Init")
+                uiLog.info(
+                    "Repository: ${repo.name} | id='${repo.id}' | type=${repo.type} | source=${repo.source} | $authInfo",
+                    "Init"
+                )
             }
 
             uiLog.info("Feed selector initialized with ${repos.size} repositories", "Init")
@@ -698,7 +710,7 @@ class UnifiedDependencyPanel(
                 mavenInstalledDependencies.associate { dep ->
                     val latestVersion = MavenPluginUpdateService.getLatestVersion(dep.groupId, dep.artifactId)
                     dep.id to latestVersion
-                }.filterValues { it != null }.mapValues { it.value!! }
+                }.mapNotNull { (key, value) -> value?.let { key to it } }.toMap()
             } catch (e: Exception) {
                 log.warn("Failed to check Maven dependency updates", e)
                 emptyMap()
@@ -754,7 +766,7 @@ class UnifiedDependencyPanel(
         // Build list of dependencies to check (groupId, artifactId, version)
         val depsToCheck = packages
             .filter { it.isInstalled && it.installedVersion != null }
-            .map { Triple(it.publisher, it.name, it.installedVersion!!) }
+            .mapNotNull { pkg -> pkg.installedVersion?.let { Triple(pkg.publisher, pkg.name, it) } }
 
         if (depsToCheck.isEmpty()) return
 
@@ -813,7 +825,10 @@ class UnifiedDependencyPanel(
      * Shows a confirmation dialog, then inserts the ignore comment in the build file.
      * PREMIUM FEATURE: Vulnerability allowlist requires Premium license.
      */
-    private fun handleIgnoreVulnerability(pkg: UnifiedPackage, vulnInfo: com.maddrobot.plugins.udm.gradle.manager.model.VulnerabilityInfo) {
+    private fun handleIgnoreVulnerability(
+        pkg: UnifiedPackage,
+        vulnInfo: com.maddrobot.plugins.udm.gradle.manager.model.VulnerabilityInfo
+    ) {
         // Gate behind Premium license
         if (!PremiumFeatureGuard.checkOrPrompt(project, Feature.VULNERABILITY_ALLOWLIST)) {
             return
@@ -824,7 +839,10 @@ class UnifiedDependencyPanel(
             val reason = dialog.reason
             val success = vulnerabilityIgnoreService.ignoreVulnerability(pkg, vulnInfo, reason)
             if (success) {
-                uiLog.info("Ignored vulnerability ${vulnInfo.cveId ?: "unknown"} for ${pkg.id}: $reason", "Vulnerability")
+                uiLog.info(
+                    "Ignored vulnerability ${vulnInfo.cveId ?: "unknown"} for ${pkg.id}: $reason",
+                    "Vulnerability"
+                )
 
                 // Remove the vulnerability from the package in the list and refresh the details panel
                 val updatedPkg = pkg.copy(vulnerabilityInfo = null)
@@ -858,13 +876,18 @@ class UnifiedDependencyPanel(
                         // Search all repositories and combine results
                         searchAllRepositories(query)
                     }
+
                     selectedRepo != null -> {
                         searchInRepository(query, selectedRepo)
                     }
+
                     else -> {
                         // Fallback: If no repo selected but we have searchable repos, search all
                         if (searchableRepos.isNotEmpty()) {
-                            uiLog.warn("No repo selected, falling back to searching all ${searchableRepos.size} repos", "Search")
+                            uiLog.warn(
+                                "No repo selected, falling back to searching all ${searchableRepos.size} repos",
+                                "Search"
+                            )
                             searchAllRepositories(query)
                         } else {
                             // Last resort: search Maven Central directly
@@ -889,7 +912,8 @@ class UnifiedDependencyPanel(
                 }
 
                 // Mark search results with installed status and filter out duplicates
-                val gradleInstalled = if (isGradleProject) gradleDependencyService.installedDependencies else emptyList()
+                val gradleInstalled =
+                    if (isGradleProject) gradleDependencyService.installedDependencies else emptyList()
                 val mavenInstalled = if (isMavenProject) mavenInstalledDependencies else emptyList()
 
                 val availablePackages = searchResults
@@ -915,7 +939,10 @@ class UnifiedDependencyPanel(
                 // The list panel will organize these into sections (Installed, Transitive, Available)
                 val combinedPackages = filteredInstalled + availablePackages
 
-                uiLog.info("Search completed: ${filteredInstalled.size} installed matches, ${availablePackages.size} available packages", "Search")
+                uiLog.info(
+                    "Search completed: ${filteredInstalled.size} installed matches, ${availablePackages.size} available packages",
+                    "Search"
+                )
 
                 ApplicationManager.getApplication().invokeLater {
                     listPanel.setPackages(combinedPackages)
@@ -1004,23 +1031,28 @@ class UnifiedDependencyPanel(
                 val results = DependencyService.searchFromMavenCentral(query)
                 results.map { PackageAdapters.fromDependency(it, PackageSource.MAVEN_CENTRAL) }
             }
+
             RepositoryType.NEXUS -> {
                 uiLog.info("Using Nexus search API", "Search")
                 // Use repository-specific credentials if available
                 searchNexusRepository(query, repo)
             }
+
             RepositoryType.AZURE_ARTIFACTS -> {
                 uiLog.info("Using Azure Artifacts REST API", "Search")
                 searchAzureArtifacts(query, repo)
             }
+
             RepositoryType.ARTIFACTORY -> {
                 uiLog.info("Using Artifactory GAVC search API", "Search")
                 searchArtifactoryRepo(query, repo)
             }
+
             RepositoryType.CUSTOM, RepositoryType.MAVEN, RepositoryType.JITPACK -> {
                 uiLog.info("Using generic Maven repository search", "Search")
                 searchGenericMavenRepo(query, repo)
             }
+
             else -> {
                 log.warn("Search not supported for repository type: ${repo.type}")
                 uiLog.warn("Search not supported for repository type: ${repo.type}", "Search")
@@ -1066,10 +1098,17 @@ class UnifiedDependencyPanel(
                         return parseNexusSearchResponse(result.data)
                     }
                 }
+
                 is com.maddrobot.plugins.udm.util.HttpRequestHelper.RequestResult.Error -> {
-                    uiLog.warn("Nexus-style search failed: ${result.exception.message} (code: ${result.responseCode})", "Search")
+                    uiLog.warn(
+                        "Nexus-style search failed: ${result.exception.message} (code: ${result.responseCode})",
+                        "Search"
+                    )
                     if (result.responseCode == 401 || result.responseCode == 403) {
-                        uiLog.error("Authentication failed. Check credentials in Maven settings.xml or gradle.properties", "Search")
+                        uiLog.error(
+                            "Authentication failed. Check credentials in Maven settings.xml or gradle.properties",
+                            "Search"
+                        )
                     }
                 }
             }
@@ -1093,6 +1132,7 @@ class UnifiedDependencyPanel(
                     password = repo.password
                 )
             }
+
             repo.password != null -> {
                 // PAT-style authentication (empty username with token as password)
                 com.maddrobot.plugins.udm.util.HttpRequestHelper.AuthCredentials(
@@ -1100,6 +1140,7 @@ class UnifiedDependencyPanel(
                     password = repo.password
                 )
             }
+
             else -> null
         }
     }
@@ -1120,7 +1161,8 @@ class UnifiedDependencyPanel(
             if (itemsStart == -1) return emptyList()
 
             // Simple extraction of group:name:version tuples
-            val itemPattern = """\{[^}]*"group"\s*:\s*"([^"]+)"[^}]*"name"\s*:\s*"([^"]+)"[^}]*"version"\s*:\s*"([^"]+)"[^}]*\}""".toRegex()
+            val itemPattern =
+                """\{[^}]*"group"\s*:\s*"([^"]+)"[^}]*"name"\s*:\s*"([^"]+)"[^}]*"version"\s*:\s*"([^"]+)"[^}]*\}""".toRegex()
             val matches = itemPattern.findAll(response)
 
             for (match in matches.take(50)) {
@@ -1179,10 +1221,17 @@ class UnifiedDependencyPanel(
                         return parseNexusSearchResponse(result.data)
                     }
                 }
+
                 is com.maddrobot.plugins.udm.util.HttpRequestHelper.RequestResult.Error -> {
-                    uiLog.error("Nexus: Search failed - ${result.exception.message} (code: ${result.responseCode})", "Nexus")
+                    uiLog.error(
+                        "Nexus: Search failed - ${result.exception.message} (code: ${result.responseCode})",
+                        "Nexus"
+                    )
                     if (result.responseCode == 401 || result.responseCode == 403) {
-                        uiLog.error("Nexus: Authentication failed. Check credentials in Maven settings.xml or gradle.properties", "Nexus")
+                        uiLog.error(
+                            "Nexus: Authentication failed. Check credentials in Maven settings.xml or gradle.properties",
+                            "Nexus"
+                        )
                     }
                 }
             }
@@ -1222,10 +1271,17 @@ class UnifiedDependencyPanel(
                         return parseArtifactoryResponse(result.data, repo)
                     }
                 }
+
                 is com.maddrobot.plugins.udm.util.HttpRequestHelper.RequestResult.Error -> {
-                    uiLog.error("Artifactory: Search failed - ${result.exception.message} (code: ${result.responseCode})", "Artifactory")
+                    uiLog.error(
+                        "Artifactory: Search failed - ${result.exception.message} (code: ${result.responseCode})",
+                        "Artifactory"
+                    )
                     if (result.responseCode == 401 || result.responseCode == 403) {
-                        uiLog.error("Artifactory: Authentication failed. Check credentials in Maven settings.xml or gradle.properties", "Artifactory")
+                        uiLog.error(
+                            "Artifactory: Authentication failed. Check credentials in Maven settings.xml or gradle.properties",
+                            "Artifactory"
+                        )
                     }
                 }
             }
@@ -1314,7 +1370,10 @@ class UnifiedDependencyPanel(
                 project = match.groupValues[2]
                 feed = match.groupValues[3]
                 log.info("Detected project-scoped Azure Artifacts: org=$org, project=$project, feed=$feed")
-                uiLog.info("Azure Artifacts: Detected project-scoped feed: org=$org, project=$project, feed=$feed", "Azure")
+                uiLog.info(
+                    "Azure Artifacts: Detected project-scoped feed: org=$org, project=$project, feed=$feed",
+                    "Azure"
+                )
             } else {
                 // Try org-scoped URL
                 regex = """pkgs\.dev\.azure\.com/([^/]+)/_packaging/([^/]+)""".toRegex()
@@ -1328,7 +1387,10 @@ class UnifiedDependencyPanel(
                     uiLog.info("Azure Artifacts: Detected org-scoped feed: org=$org, feed=$feed", "Azure")
                 } else {
                     log.warn("Could not parse Azure Artifacts URL: $repoUrl")
-                    uiLog.error("Azure Artifacts: Could not parse URL format. Expected: pkgs.dev.azure.com/{org}/{project?}/_packaging/{feed}/maven/v1", "Azure")
+                    uiLog.error(
+                        "Azure Artifacts: Could not parse URL format. Expected: pkgs.dev.azure.com/{org}/{project?}/_packaging/{feed}/maven/v1",
+                        "Azure"
+                    )
                     return emptyList()
                 }
             }
@@ -1358,13 +1420,21 @@ class UnifiedDependencyPanel(
 
             // Build authentication credentials - log what we have
             uiLog.info("Azure Artifacts: Repository config - id='${repo.id}', source=${repo.source}", "Azure")
-            uiLog.info("Azure Artifacts: Credentials check - username=${repo.username?.let { "'$it'" } ?: "null"}, password=${repo.password?.let { "present (${it.length} chars)" } ?: "null"}", "Azure")
+            uiLog.info("Azure Artifacts: Credentials check - username=${repo.username?.let { "'$it'" } ?: "null"}, password=${repo.password?.let { "present (${it.length} chars)" } ?: "null"}",
+                "Azure")
 
             val auth = if (repo.username != null && repo.password != null) {
                 val maskedPw = if (repo.password.length > 4) {
-                    "${repo.password.take(2)}${"*".repeat(minOf(repo.password.length - 4, 20))}${repo.password.takeLast(2)}"
+                    "${repo.password.take(2)}${"*".repeat(minOf(repo.password.length - 4, 20))}${
+                        repo.password.takeLast(
+                            2
+                        )
+                    }"
                 } else "****"
-                uiLog.info("Azure Artifacts: Using Basic auth - username='${repo.username}', password=$maskedPw", "Azure")
+                uiLog.info(
+                    "Azure Artifacts: Using Basic auth - username='${repo.username}', password=$maskedPw",
+                    "Azure"
+                )
                 com.maddrobot.plugins.udm.util.HttpRequestHelper.AuthCredentials(
                     username = repo.username,
                     password = repo.password
@@ -1372,7 +1442,11 @@ class UnifiedDependencyPanel(
             } else if (repo.password != null) {
                 // For Azure Artifacts, try using a PAT with empty username (Azure DevOps convention)
                 val maskedPw = if (repo.password.length > 4) {
-                    "${repo.password.take(2)}${"*".repeat(minOf(repo.password.length - 4, 20))}${repo.password.takeLast(2)}"
+                    "${repo.password.take(2)}${"*".repeat(minOf(repo.password.length - 4, 20))}${
+                        repo.password.takeLast(
+                            2
+                        )
+                    }"
                 } else "****"
                 uiLog.info("Azure Artifacts: Using PAT auth (empty username) - password=$maskedPw", "Azure")
                 com.maddrobot.plugins.udm.util.HttpRequestHelper.AuthCredentials(
@@ -1410,12 +1484,19 @@ class UnifiedDependencyPanel(
                         uiLog.warn("Azure Artifacts: Server returned empty response", "Azure")
                     }
                 }
+
                 is com.maddrobot.plugins.udm.util.HttpRequestHelper.RequestResult.Error -> {
                     log.warn("Azure Artifacts search failed: ${result.exception.message} (code: ${result.responseCode})")
-                    uiLog.error("Azure Artifacts: HTTP request failed - ${result.exception.message} (code: ${result.responseCode})", "Azure")
+                    uiLog.error(
+                        "Azure Artifacts: HTTP request failed - ${result.exception.message} (code: ${result.responseCode})",
+                        "Azure"
+                    )
                     if (result.responseCode == 401 || result.responseCode == 403) {
                         log.warn("Authentication failed for Azure Artifacts. Make sure credentials are configured.")
-                        uiLog.error("Azure Artifacts: Authentication failed (${result.responseCode}). Check your PAT token in Maven settings.xml", "Azure")
+                        uiLog.error(
+                            "Azure Artifacts: Authentication failed (${result.responseCode}). Check your PAT token in Maven settings.xml",
+                            "Azure"
+                        )
                     } else if (result.responseCode == 404) {
                         uiLog.error("Azure Artifacts: Feed not found (404). Check the feed name and URL", "Azure")
                     }
@@ -1549,7 +1630,13 @@ class UnifiedDependencyPanel(
         }
     }
 
-    private fun performInstall(pkg: UnifiedPackage, version: String, module: String, configuration: String, sourceRepoUrl: String? = null) {
+    private fun performInstall(
+        pkg: UnifiedPackage,
+        version: String,
+        module: String,
+        configuration: String,
+        sourceRepoUrl: String? = null
+    ) {
         // Log which repository is being used
         if (sourceRepoUrl != null) {
             uiLog.info("Installing ${pkg.id}:$version from repository: $sourceRepoUrl", "Install")
@@ -1566,18 +1653,31 @@ class UnifiedDependencyPanel(
     }
 
     private fun performGradleInstall(pkg: UnifiedPackage, version: String, module: String, configuration: String) {
-        uiLog.info("Gradle Install: Starting install of ${pkg.id}:$version to module '$module' with config '$configuration'", "Install")
+        uiLog.info(
+            "Gradle Install: Starting install of ${pkg.id}:$version to module '$module' with config '$configuration'",
+            "Install"
+        )
 
         val buildFiles = gradleScanner.getModuleBuildFiles()
         uiLog.debug("Gradle Install: Available modules: ${buildFiles.keys.joinToString(", ")}", "Install")
 
         val buildFile = buildFiles[module]?.path
         if (buildFile == null) {
-            uiLog.error("Gradle Install: Could not find build file for module '$module'. Available modules: ${buildFiles.keys.joinToString(", ")}", "Install")
+            uiLog.error(
+                "Gradle Install: Could not find build file for module '$module'. Available modules: ${
+                    buildFiles.keys.joinToString(
+                        ", "
+                    )
+                }", "Install"
+            )
             ApplicationManager.getApplication().invokeLater {
                 com.intellij.openapi.ui.Messages.showErrorDialog(
                     project,
-                    "Could not find build file for module '$module'.\nAvailable modules: ${buildFiles.keys.joinToString(", ")}",
+                    "Could not find build file for module '$module'.\nAvailable modules: ${
+                        buildFiles.keys.joinToString(
+                            ", "
+                        )
+                    }",
                     "Install Failed"
                 )
             }
@@ -1603,14 +1703,23 @@ class UnifiedDependencyPanel(
     }
 
     private fun performMavenInstall(pkg: UnifiedPackage, version: String, module: String, scope: String) {
-        uiLog.info("Maven Install: Starting install of ${pkg.id}:$version to module '$module' with scope '$scope'", "Install")
+        uiLog.info(
+            "Maven Install: Starting install of ${pkg.id}:$version to module '$module' with scope '$scope'",
+            "Install"
+        )
 
         val pomFiles = mavenScanner.getModulePomFiles()
         uiLog.debug("Maven Install: Available modules: ${pomFiles.keys.joinToString(", ")}", "Install")
 
         val pomFile = pomFiles[module]?.path
         if (pomFile == null) {
-            uiLog.error("Maven Install: Could not find pom.xml for module '$module'. Available modules: ${pomFiles.keys.joinToString(", ")}", "Install")
+            uiLog.error(
+                "Maven Install: Could not find pom.xml for module '$module'. Available modules: ${
+                    pomFiles.keys.joinToString(
+                        ", "
+                    )
+                }", "Install"
+            )
             // Show error to user
             ApplicationManager.getApplication().invokeLater {
                 com.intellij.openapi.ui.Messages.showErrorDialog(
@@ -1684,7 +1793,12 @@ class UnifiedDependencyPanel(
             val originalContent = document.text
             val newContent = gradleModifier.getUpdatedContent(installed, newVersion)
             if (newContent != null) {
-                applyWithOptionalPreview(installed.buildFile, originalContent, newContent, "Update Dependency: ${pkg.id}") {
+                applyWithOptionalPreview(
+                    installed.buildFile,
+                    originalContent,
+                    newContent,
+                    "Update Dependency: ${pkg.id}"
+                ) {
                     gradleModifier.applyChanges(installed, newContent, "Update Dependency: ${pkg.id}")
                     refresh()
                 }
@@ -1704,7 +1818,12 @@ class UnifiedDependencyPanel(
             val originalContent = document.text
             val newContent = mavenModifier.getUpdatedContent(installed, newVersion)
             if (newContent != null) {
-                applyWithOptionalPreview(installed.pomFile, originalContent, newContent, "Update Dependency: ${pkg.id}") {
+                applyWithOptionalPreview(
+                    installed.pomFile,
+                    originalContent,
+                    newContent,
+                    "Update Dependency: ${pkg.id}"
+                ) {
                     mavenModifier.applyChanges(installed, newContent, "Update Dependency: ${pkg.id}")
                     refresh()
                 }
@@ -1712,7 +1831,11 @@ class UnifiedDependencyPanel(
         }
     }
 
-    private fun performGradlePluginUpdate(pkg: UnifiedPackage, metadata: PackageMetadata.GradlePluginMetadata, newVersion: String) {
+    private fun performGradlePluginUpdate(
+        pkg: UnifiedPackage,
+        metadata: PackageMetadata.GradlePluginMetadata,
+        newVersion: String
+    ) {
         // Reconstruct InstalledPlugin from metadata
         val installedPlugin = InstalledPlugin(
             pluginId = pkg.name,
@@ -1742,7 +1865,11 @@ class UnifiedDependencyPanel(
         }
     }
 
-    private fun performMavenPluginUpdate(pkg: UnifiedPackage, metadata: PackageMetadata.MavenPluginMetadata, newVersion: String) {
+    private fun performMavenPluginUpdate(
+        pkg: UnifiedPackage,
+        metadata: PackageMetadata.MavenPluginMetadata,
+        newVersion: String
+    ) {
         // Reconstruct MavenInstalledPlugin from metadata
         val installedPlugin = MavenInstalledPlugin(
             groupId = pkg.publisher,
@@ -1810,12 +1937,18 @@ class UnifiedDependencyPanel(
                     return
                 }
 
-                applyWithOptionalPreview(installed.buildFile, originalContent, newContent, "Add Exclusion: ${exclusion.id}") {
+                applyWithOptionalPreview(
+                    installed.buildFile,
+                    originalContent,
+                    newContent,
+                    "Add Exclusion: ${exclusion.id}"
+                ) {
                     gradleModifier.applyChanges(installed, newContent, "Add Exclusion: ${exclusion.id}")
                     refresh()
                     uiLog.info("AddExclusion: Successfully added ${exclusion.id} to ${pkg.id}", "Exclusion")
                 }
             }
+
             is PackageMetadata.MavenInstalledMetadata -> {
                 val installed = mavenInstalledDependencies.find {
                     it.groupId == pkg.publisher && it.artifactId == pkg.name
@@ -1835,12 +1968,18 @@ class UnifiedDependencyPanel(
                     return
                 }
 
-                applyWithOptionalPreview(installed.pomFile, originalContent, newContent, "Add Exclusion: ${exclusion.id}") {
+                applyWithOptionalPreview(
+                    installed.pomFile,
+                    originalContent,
+                    newContent,
+                    "Add Exclusion: ${exclusion.id}"
+                ) {
                     mavenModifier.applyChanges(installed, newContent, "Add Exclusion: ${exclusion.id}")
                     refresh()
                     uiLog.info("AddExclusion: Successfully added ${exclusion.id} to ${pkg.id}", "Exclusion")
                 }
             }
+
             else -> {
                 uiLog.error("AddExclusion: Unsupported metadata type: ${metadata::class.simpleName}", "Exclusion")
             }
@@ -1875,18 +2014,27 @@ class UnifiedDependencyPanel(
                     return
                 }
 
-                applyWithOptionalPreview(installed.buildFile, originalContent, newContent, "Remove Exclusion: ${exclusion.id}") {
+                applyWithOptionalPreview(
+                    installed.buildFile,
+                    originalContent,
+                    newContent,
+                    "Remove Exclusion: ${exclusion.id}"
+                ) {
                     gradleModifier.applyChanges(installed, newContent, "Remove Exclusion: ${exclusion.id}")
                     refresh()
                     uiLog.info("RemoveExclusion: Successfully removed ${exclusion.id} from ${pkg.id}", "Exclusion")
                 }
             }
+
             is PackageMetadata.MavenInstalledMetadata -> {
                 val installed = mavenInstalledDependencies.find {
                     it.groupId == pkg.publisher && it.artifactId == pkg.name
                 }
                 if (installed == null) {
-                    uiLog.error("RemoveExclusion: Could not find ${pkg.id} in Maven installed dependencies", "Exclusion")
+                    uiLog.error(
+                        "RemoveExclusion: Could not find ${pkg.id} in Maven installed dependencies",
+                        "Exclusion"
+                    )
                     return
                 }
 
@@ -1900,16 +2048,116 @@ class UnifiedDependencyPanel(
                     return
                 }
 
-                applyWithOptionalPreview(installed.pomFile, originalContent, newContent, "Remove Exclusion: ${exclusion.id}") {
+                applyWithOptionalPreview(
+                    installed.pomFile,
+                    originalContent,
+                    newContent,
+                    "Remove Exclusion: ${exclusion.id}"
+                ) {
                     mavenModifier.applyChanges(installed, newContent, "Remove Exclusion: ${exclusion.id}")
                     refresh()
                     uiLog.info("RemoveExclusion: Successfully removed ${exclusion.id} from ${pkg.id}", "Exclusion")
                 }
             }
+
             else -> {
                 uiLog.error("RemoveExclusion: Unsupported metadata type: ${metadata::class.simpleName}", "Exclusion")
             }
         }
+    }
+
+    /**
+     * Show project-wide exclusion suggestion dialog.
+     * Analyzes all installed dependencies for transitive conflicts and known problematic patterns.
+     */
+    private fun showExclusionSuggestionDialog() {
+        // Gate behind Premium license
+        if (!PremiumFeatureGuard.checkOrPrompt(project, Feature.EXCLUSION_SUGGESTIONS)) {
+            return
+        }
+
+        // Collect dependencies on a background thread to avoid blocking the EDT.
+        // gradleScanner.scanInstalledDependencies() uses ReadAction.compute which
+        // can be slow on large projects.
+        object : Task.Backgroundable(project, "Loading dependencies...", true) {
+            private var dependencySets = mutableListOf<ExclusionSuggestionDialog.DependencySet>()
+
+            override fun run(indicator: ProgressIndicator) {
+                indicator.isIndeterminate = true
+
+                if (isGradleProject) {
+                    indicator.text = "Scanning Gradle dependencies..."
+                    val gradleDeps = gradleDependencyService.installedDependencies.ifEmpty {
+                        gradleScanner.scanInstalledDependencies()
+                    }
+                    if (gradleDeps.isNotEmpty()) {
+                        dependencySets.add(ExclusionSuggestionDialog.DependencySet(gradleDeps, BuildSystem.GRADLE))
+                    }
+                }
+
+                if (isMavenProject) {
+                    indicator.text = "Scanning Maven dependencies..."
+                    val mavenDeps = mavenInstalledDependencies.map { dep ->
+                        InstalledDependency(
+                            groupId = dep.groupId,
+                            artifactId = dep.artifactId,
+                            version = dep.version,
+                            configuration = dep.scope ?: "compile",
+                            moduleName = dep.moduleName,
+                            buildFile = dep.pomFile,
+                            exclusions = dep.exclusions
+                        )
+                    }
+                    if (mavenDeps.isNotEmpty()) {
+                        dependencySets.add(ExclusionSuggestionDialog.DependencySet(mavenDeps, BuildSystem.MAVEN))
+                    }
+                }
+            }
+
+            override fun onSuccess() {
+                if (dependencySets.isEmpty()) {
+                    com.intellij.openapi.ui.Messages.showInfoMessage(
+                        project,
+                        message("unified.exclusion.suggestion.no.deps"),
+                        message("unified.exclusion.suggestion.dialog.title")
+                    )
+                    return
+                }
+
+                val moduleFilter = moduleSelectorAction.getSelectedModule()
+                val dialog = ExclusionSuggestionDialog(project, dependencySets, moduleFilter)
+                if (dialog.showAndGet()) {
+                    val selectedSuggestions = dialog.getSelectedSuggestions()
+                    if (selectedSuggestions.isNotEmpty()) {
+                        uiLog.info(
+                            "ExclusionSuggestions: Applying ${selectedSuggestions.size} suggested exclusions",
+                            "Exclusion"
+                        )
+                        for (suggestion in selectedSuggestions) {
+                            val pkg = when (suggestion.buildSystem) {
+                                BuildSystem.MAVEN -> {
+                                    val mavenDep = mavenInstalledDependencies.find {
+                                        it.groupId == suggestion.parentDependency.groupId &&
+                                            it.artifactId == suggestion.parentDependency.artifactId
+                                    }
+                                    if (mavenDep != null) {
+                                        PackageAdapters.fromMavenInstalledDependency(mavenDep)
+                                    } else {
+                                        PackageAdapters.fromInstalledDependency(suggestion.parentDependency)
+                                    }
+                                }
+
+                                BuildSystem.GRADLE -> {
+                                    PackageAdapters.fromInstalledDependency(suggestion.parentDependency)
+                                }
+                            }
+                            performAddExclusionDirect(pkg, suggestion.exclusion)
+                        }
+                        refresh()
+                    }
+                }
+            }
+        }.queue()
     }
 
     /**
@@ -1991,12 +2239,16 @@ class UnifiedDependencyPanel(
                 gradleModifier.applyChanges(installed, newContent, "Add Exclusion: ${exclusion.id}")
                 uiLog.info("AddExclusionDirect: Successfully added ${exclusion.id} to ${pkg.id}", "Exclusion")
             }
+
             is PackageMetadata.MavenInstalledMetadata -> {
                 val installed = mavenInstalledDependencies.find {
                     it.groupId == pkg.publisher && it.artifactId == pkg.name
                 }
                 if (installed == null) {
-                    uiLog.error("AddExclusionDirect: Could not find ${pkg.id} in Maven installed dependencies", "Exclusion")
+                    uiLog.error(
+                        "AddExclusionDirect: Could not find ${pkg.id} in Maven installed dependencies",
+                        "Exclusion"
+                    )
                     return
                 }
 
@@ -2011,6 +2263,7 @@ class UnifiedDependencyPanel(
                 mavenModifier.applyChanges(installed, newContent, "Add Exclusion: ${exclusion.id}")
                 uiLog.info("AddExclusionDirect: Successfully added ${exclusion.id} to ${pkg.id}", "Exclusion")
             }
+
             else -> {
                 uiLog.error("AddExclusionDirect: Unsupported metadata type: ${metadata::class.simpleName}", "Exclusion")
             }
@@ -2020,13 +2273,19 @@ class UnifiedDependencyPanel(
     private fun performUninstall(pkg: UnifiedPackage) {
         val metadata = pkg.metadata
 
-        uiLog.info("Uninstall: Package ${pkg.id}, metadata type: ${metadata::class.simpleName}, source: ${pkg.source}", "Uninstall")
+        uiLog.info(
+            "Uninstall: Package ${pkg.id}, metadata type: ${metadata::class.simpleName}, source: ${pkg.source}",
+            "Uninstall"
+        )
 
         when (metadata) {
             is PackageMetadata.GradleMetadata -> performGradleUninstall(pkg)
             is PackageMetadata.MavenInstalledMetadata -> performMavenUninstall(pkg)
             else -> {
-                uiLog.error("Uninstall: Cannot uninstall package with metadata type: ${metadata::class.simpleName}", "Uninstall")
+                uiLog.error(
+                    "Uninstall: Cannot uninstall package with metadata type: ${metadata::class.simpleName}",
+                    "Uninstall"
+                )
                 log.warn("Cannot uninstall package with metadata type: ${metadata::class.simpleName}")
 
                 // Show error to user
@@ -2104,7 +2363,11 @@ class UnifiedDependencyPanel(
 
         if (installed == null) {
             uiLog.error("Maven Uninstall: Could not find ${pkg.id} in installed dependencies cache", "Uninstall")
-            uiLog.info("Maven Uninstall: Available dependencies: ${mavenInstalledDependencies.map { it.id }.joinToString(", ")}", "Uninstall")
+            uiLog.info(
+                "Maven Uninstall: Available dependencies: ${
+                    mavenInstalledDependencies.map { it.id }.joinToString(", ")
+                }", "Uninstall"
+            )
 
             // Show error to user
             ApplicationManager.getApplication().invokeLater {
@@ -2182,6 +2445,7 @@ class UnifiedDependencyPanel(
                             fetchVersionsFromMavenCentral(pkg)
                         }
                     }
+
                     else -> fetchVersionsFromMavenCentral(pkg)
                 }
 
@@ -2274,7 +2538,8 @@ class UnifiedDependencyPanel(
             val auth = buildAuthCredentials(repo)
             val headers = mapOf("Accept" to "application/json")
 
-            val result = com.maddrobot.plugins.udm.util.HttpRequestHelper.getForObject(versionsUrl, auth, headers) { it }
+            val result =
+                com.maddrobot.plugins.udm.util.HttpRequestHelper.getForObject(versionsUrl, auth, headers) { it }
 
             when (result) {
                 is com.maddrobot.plugins.udm.util.HttpRequestHelper.RequestResult.Success -> {
@@ -2283,8 +2548,12 @@ class UnifiedDependencyPanel(
                         return parseAzureVersionsResponse(result.data)
                     }
                 }
+
                 is com.maddrobot.plugins.udm.util.HttpRequestHelper.RequestResult.Error -> {
-                    uiLog.warn("Azure versions fetch failed: ${result.exception.message} (code: ${result.responseCode})", "Versions")
+                    uiLog.warn(
+                        "Azure versions fetch failed: ${result.exception.message} (code: ${result.responseCode})",
+                        "Versions"
+                    )
                 }
             }
         } catch (e: Exception) {
@@ -2319,7 +2588,8 @@ class UnifiedDependencyPanel(
         uiLog.info("Fetching versions from Nexus for ${pkg.id}", "Versions")
 
         try {
-            val searchUrl = "$repoUrl/service/rest/v1/search?sort=version&direction=desc&group=${pkg.publisher}&name=${pkg.name}"
+            val searchUrl =
+                "$repoUrl/service/rest/v1/search?sort=version&direction=desc&group=${pkg.publisher}&name=${pkg.name}"
             val auth = buildAuthCredentials(repo)
 
             val result = com.maddrobot.plugins.udm.util.HttpRequestHelper.getForObject(searchUrl, auth) { it }
@@ -2336,6 +2606,7 @@ class UnifiedDependencyPanel(
                         return versions.sortedWith(VersionComparator.reversed())
                     }
                 }
+
                 is com.maddrobot.plugins.udm.util.HttpRequestHelper.RequestResult.Error -> {
                     uiLog.warn("Nexus versions fetch failed: ${result.exception.message}", "Versions")
                 }
@@ -2409,8 +2680,12 @@ class UnifiedDependencyPanel(
                             }
                         }
                     }
+
                     else -> {
-                        uiLog.warn("Bulk upgrade not implemented for metadata type: ${metadata::class.simpleName}", "BulkUpgrade")
+                        uiLog.warn(
+                            "Bulk upgrade not implemented for metadata type: ${metadata::class.simpleName}",
+                            "BulkUpgrade"
+                        )
                     }
                 }
             }
@@ -2596,7 +2871,10 @@ class UnifiedDependencyPanel(
 
             // Resolve property-based versions (e.g., "${maven-compiler-plugin.version}")
             if (version != null && version.contains("\${")) {
-                uiLog.info("Configure: Resolving property-based version '$version' from ${metadata.pomFile}", "Configure")
+                uiLog.info(
+                    "Configure: Resolving property-based version '$version' from ${metadata.pomFile}",
+                    "Configure"
+                )
                 version = mavenPluginScanner.resolveVersionFromPom(version, metadata.pomFile)
                 if (version != null) {
                     uiLog.info("Configure: Resolved version to '$version'", "Configure")
@@ -2627,7 +2905,10 @@ class UnifiedDependencyPanel(
 
                 if (dialog.showAndGet()) {
                     val newConfig = dialog.resultConfiguration
-                    uiLog.info("Configure: Applying ${newConfig.size} configuration properties to ${pkg.id}", "Configure")
+                    uiLog.info(
+                        "Configure: Applying ${newConfig.size} configuration properties to ${pkg.id}",
+                        "Configure"
+                    )
                     performMavenPluginConfigure(pkg, metadata, newConfig)
                 }
             }

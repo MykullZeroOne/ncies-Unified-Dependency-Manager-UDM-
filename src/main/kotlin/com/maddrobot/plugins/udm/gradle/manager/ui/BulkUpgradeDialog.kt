@@ -50,8 +50,8 @@ class BulkUpgradeDialog(
     private lateinit var summaryLabel: JBLabel
 
     init {
-        title = "Upgrade All Packages"
-        setOKButtonText("Upgrade Selected")
+        title = message("unified.upgrade.dialog.title")
+        setOKButtonText(message("unified.upgrade.dialog.button"))
         init()
 
         // Initially select all packages
@@ -75,7 +75,7 @@ class BulkUpgradeDialog(
 
             // Grouping selector
             val groupingPanel = JPanel(FlowLayout(FlowLayout.RIGHT, 5, 0)).apply {
-                add(JBLabel("Group by:"))
+                add(JBLabel(message("unified.label.group.by")))
                 add(JComboBox(GroupingMode.entries.toTypedArray()).apply {
                     selectedItem = groupingMode
                     addActionListener {
@@ -98,18 +98,18 @@ class BulkUpgradeDialog(
         val buttonPanel = JPanel(FlowLayout(FlowLayout.LEFT, 5, 0)).apply {
             border = JBUI.Borders.emptyTop(10)
 
-            add(JButton("Select All").apply {
+            add(JButton(message("unified.upgrade.dialog.select.all")).apply {
                 addActionListener { selectAll() }
             })
-            add(JButton("Deselect All").apply {
+            add(JButton(message("unified.upgrade.dialog.deselect.all")).apply {
                 addActionListener { deselectAll() }
             })
-            add(JButton("Select Patch Only").apply {
-                toolTipText = "Select only patch version updates (e.g., 1.0.0 → 1.0.1)"
+            add(JButton(message("unified.upgrade.dialog.select.patch")).apply {
+                toolTipText = message("unified.upgrade.dialog.select.patch.tooltip")
                 addActionListener { selectByType(UpdateType.PATCH) }
             })
-            add(JButton("Select Minor Only").apply {
-                toolTipText = "Select only minor version updates (e.g., 1.0.0 → 1.1.0)"
+            add(JButton(message("unified.upgrade.dialog.select.minor")).apply {
+                toolTipText = message("unified.upgrade.dialog.select.minor.tooltip")
                 addActionListener { selectByType(UpdateType.MINOR) }
             })
         }
@@ -245,7 +245,7 @@ class BulkUpgradeDialog(
     private fun updateSummary() {
         val selected = selectedPackages.size
         val total = packagesWithUpdates.size
-        summaryLabel.text = "$selected of $total packages selected for upgrade"
+        summaryLabel.text = message("unified.upgrade.dialog.summary", selected, total)
     }
 
     fun getSelectedPackages(): List<UnifiedPackage> {
@@ -256,11 +256,13 @@ class BulkUpgradeDialog(
 
     data class SemVer(val major: Int, val minor: Int, val patch: Int)
 
-    enum class UpdateType(val displayName: String) {
-        MAJOR("Major Updates"),
-        MINOR("Minor Updates"),
-        PATCH("Patch Updates"),
-        UNKNOWN("Other Updates")
+    enum class UpdateType(val messageKey: String) {
+        MAJOR("unified.upgrade.type.major"),
+        MINOR("unified.upgrade.type.minor"),
+        PATCH("unified.upgrade.type.patch"),
+        UNKNOWN("unified.upgrade.type.other");
+
+        val displayName: String get() = message(messageKey)
     }
 
     data class ModuleGroupNode(val moduleName: String, val count: Int)
@@ -271,8 +273,8 @@ class BulkUpgradeDialog(
 
     private inner class PackageTreeCellRenderer : CheckboxTree.CheckboxTreeCellRenderer() {
         override fun customizeRenderer(
-            tree: JTree?,
-            value: Any?,
+            tree: JTree,
+            value: Any,
             selected: Boolean,
             expanded: Boolean,
             leaf: Boolean,

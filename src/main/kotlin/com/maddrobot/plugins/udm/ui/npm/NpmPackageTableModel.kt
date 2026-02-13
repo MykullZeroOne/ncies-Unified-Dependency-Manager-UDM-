@@ -6,9 +6,9 @@ import com.maddrobot.plugins.udm.ui.PaginatedListTableModel
 import com.maddrobot.plugins.udm.ui.TableColumnInfo
 
 /**
- * Npm Package 表格的数据模型
+ * Data model for the NPM package table
  *
- * @author drawsta
+ * madd robot tech
  * @LastModified: 2025-07-13
  * @since 2025-01-27
  */
