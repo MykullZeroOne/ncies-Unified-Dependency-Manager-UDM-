@@ -3,6 +3,7 @@ import org.jetbrains.changelog.markdownToHTML
 import org.jetbrains.intellij.platform.gradle.IntelliJPlatformType
 import org.jetbrains.intellij.platform.gradle.TestFrameworkType
 import org.jetbrains.intellij.platform.gradle.services.RequestedIntelliJPlatform
+import org.jetbrains.intellij.platform.gradle.tasks.BuildSearchableOptionsTask
 
 plugins {
     id("java") // Java support
@@ -170,6 +171,13 @@ tasks {
 
     publishPlugin {
         dependsOn(patchChangelog)
+    }
+
+    named<BuildSearchableOptionsTask>("buildSearchableOptions") {
+        val baseDir = layout.buildDirectory.dir("idea-sandbox/searchable-options").get().asFile
+        systemProperties["idea.system.path"] = baseDir.resolve("system").absolutePath
+        systemProperties["idea.config.path"] = baseDir.resolve("config").absolutePath
+        systemProperties["idea.plugins.path"] = baseDir.resolve("plugins").absolutePath
     }
 
     test {
