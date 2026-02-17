@@ -83,6 +83,11 @@ dependencies {
 // Configure IntelliJ Platform Gradle Plugin - read more: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-extension.html
 intellijPlatform {
 //RequestedIntelliJPlatform( type = IntelliJPlatformType.IntellijIdeaUltimate)
+    buildSearchableOptions.set(
+        providers.gradleProperty("skipSearchableOptions")
+            .map { value -> !value.toBoolean() }
+            .orElse(true)
+    )
     pluginConfiguration {
 
         name = providers.gradleProperty("pluginName")
@@ -178,6 +183,10 @@ tasks {
         systemProperties["idea.system.path"] = baseDir.resolve("system").absolutePath
         systemProperties["idea.config.path"] = baseDir.resolve("config").absolutePath
         systemProperties["idea.plugins.path"] = baseDir.resolve("plugins").absolutePath
+        systemProperties["idea.platform.prefix"] = "Idea"
+        systemProperties["idea.headless.enable"] = "true"
+        systemProperties["java.awt.headless"] = "true"
+        jvmArgs("-Didea.is.unit.test=true")
     }
 
     test {
