@@ -9,10 +9,8 @@ import com.intellij.openapi.project.Project
 import com.maddrobot.plugins.udm.ui.SELECTED_PACKAGE_KEY
 import com.maddrobot.plugins.udm.ui.SELECTED_PACKAGES_KEY
 import com.intellij.openapi.util.Disposer
-import com.intellij.ui.DocumentAdapter
-import com.intellij.ui.JBColor
+import com.intellij.ui.HyperlinkLabel
 import com.intellij.ui.PopupHandler
-import com.intellij.ui.SearchTextField
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBList
 import com.intellij.ui.components.JBScrollPane
@@ -23,12 +21,14 @@ import com.maddrobot.plugins.udm.gradle.manager.model.UnifiedPackage
 import com.maddrobot.plugins.udm.ui.PackageContextMenuBuilder
 import com.maddrobot.plugins.udm.ui.PackageIcons
 import com.maddrobot.plugins.udm.ui.StatusBadge
+import com.maddrobot.plugins.udm.ui.UdmColors
 import java.awt.*
+import java.awt.event.InputEvent
+import java.awt.event.KeyEvent
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import java.awt.geom.Path2D
 import javax.swing.*
-import javax.swing.event.DocumentEvent
 
 /**
  * Left panel containing the unified package list with collapsible sections.
@@ -84,10 +84,9 @@ class PackageListPanel(
     private var allPackages: List<UnifiedPackage> = emptyList()
     private var moduleFilter: String? = null
 
-    // Search with debounce
-    private val searchField = SearchTextField(true)
-    private var searchTimer: javax.swing.Timer? = null
-    private val searchDebounceMs = 300
+    // Search text (owned by toolbar search)
+    private var searchQuery: String = ""
+    private val learnMoreFont = JBUI.Fonts.smallFont()
 
     // Loading indicator
     private val loadingLabel = JBLabel(message("unified.list.loading")).apply {
@@ -96,13 +95,42 @@ class PackageListPanel(
     }
 
     // Empty state
-    private val emptyPanel = JPanel(BorderLayout()).apply {
+    private val emptyTitleLabel = JBLabel().apply {
+        horizontalAlignment = SwingConstants.CENTER
+        foreground = UIUtil.getLabelForeground()
+        font = font.deriveFont(Font.BOLD, 14f)
+    }
+    private val emptyBodyLabel = JBLabel().apply {
+        horizontalAlignment = SwingConstants.CENTER
+        foreground = UdmColors.secondaryText
+        font = font.deriveFont(12f)
+    }
+    private var emptyAction: (() -> Unit)? = null
+    private val emptyActionLink = HyperlinkLabel().apply {
+        isVisible = false
+        foreground = UdmColors.link
+        font = learnMoreFont
+        addHyperlinkListener { event ->
+            if (event.eventType == javax.swing.event.HyperlinkEvent.EventType.ACTIVATED) {
+                emptyAction?.invoke()
+            }
+        }
+    }
+    private val emptyPanel = JPanel().apply {
+        layout = BoxLayout(this, BoxLayout.Y_AXIS)
         isOpaque = false
-        add(JBLabel().apply {
-            horizontalAlignment = SwingConstants.CENTER
-            verticalAlignment = SwingConstants.CENTER
-            foreground = JBColor.GRAY
-        }, BorderLayout.CENTER)
+        border = JBUI.Borders.empty(24, 16)
+        add(emptyTitleLabel.apply {
+            alignmentX = Component.CENTER_ALIGNMENT
+        })
+        add(Box.createVerticalStrut(6))
+        add(emptyBodyLabel.apply {
+            alignmentX = Component.CENTER_ALIGNMENT
+        })
+        add(Box.createVerticalStrut(10))
+        add(emptyActionLink.apply {
+            alignmentX = Component.CENTER_ALIGNMENT
+        })
     }
 
     // Callbacks
@@ -121,11 +149,7 @@ class PackageListPanel(
     init {
         component = createMainPanel()
         setupList()
-        setupSearch()
-
-        Disposer.register(parentDisposable) {
-            searchTimer?.stop()
-        }
+        Disposer.register(parentDisposable) {}
     }
 
     private fun createMainPanel(): JPanel {
@@ -231,6 +255,32 @@ class PackageListPanel(
         val inputMap = packageList.getInputMap(JComponent.WHEN_FOCUSED)
         val actionMap = packageList.actionMap
 
+        inputMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, 0), "toggleSection")
+        actionMap.put("toggleSection", object : AbstractAction() {
+            override fun actionPerformed(e: java.awt.event.ActionEvent) {
+                val index = packageList.selectedIndex
+                if (index >= 0) {
+                    when (val item = listModel.getElementAt(index)) {
+                        is ListItem.SectionHeader -> toggleSectionCollapse(item.sectionType)
+                        else -> Unit
+                    }
+                }
+            }
+        })
+
+        inputMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, InputEvent.SHIFT_DOWN_MASK), "learnMore")
+        actionMap.put("learnMore", object : AbstractAction() {
+            override fun actionPerformed(e: java.awt.event.ActionEvent) {
+                val index = packageList.selectedIndex
+                if (index >= 0) {
+                    val item = listModel.getElementAt(index)
+                    if (item is ListItem.SectionHeader && item.learnMoreText != null) {
+                        onLearnMoreClicked?.invoke(item.title)
+                    }
+                }
+            }
+        })
+
         // DELETE - Remove selected package
         inputMap.put(KeyStroke.getKeyStroke("DELETE"), "deletePackage")
         actionMap.put("deletePackage", object : AbstractAction() {
@@ -329,34 +379,12 @@ class PackageListPanel(
     }
 
     private fun isClickOnLearnMore(point: Point, cellBounds: Rectangle, header: ListItem.SectionHeader): Boolean {
-        // Approximate location of "Learn more" link
-        val learnMoreX = cellBounds.x + cellBounds.width - 100
-        return point.x >= learnMoreX && header.learnMoreText != null
-    }
-
-    private fun setupSearch() {
-        searchField.addDocumentListener(object : DocumentAdapter() {
-            override fun textChanged(e: DocumentEvent) {
-                debounceSearch()
-            }
-        })
-    }
-
-    private fun debounceSearch() {
-        searchTimer?.stop()
-        searchTimer = javax.swing.Timer(searchDebounceMs) {
-            val text = searchField.text.trim()
-            if (text.isNotEmpty()) {
-                // Trigger API search for non-empty text
-                onSearchRequested?.invoke(text)
-            } else {
-                // Empty search - just apply local filters to show installed packages
-                applyFilters()
-            }
-        }.apply {
-            isRepeats = false
-            start()
-        }
+        val text = header.learnMoreText ?: return false
+        val fm = packageList.getFontMetrics(learnMoreFont)
+        val textWidth = fm.stringWidth(text)
+        val padding = JBUI.scale(12)
+        val learnMoreX = cellBounds.x + cellBounds.width - textWidth - padding
+        return point.x >= learnMoreX
     }
 
     /**
@@ -436,7 +464,7 @@ class PackageListPanel(
         }
 
         // Apply text filter
-        val filterText = searchField.text.trim().lowercase()
+        val filterText = searchQuery.lowercase()
         if (filterText.isNotEmpty()) {
             filtered = filtered.filter { pkg ->
                 pkg.name.lowercase().contains(filterText) ||
@@ -640,24 +668,67 @@ class PackageListPanel(
         val layout = contentPanel.layout as CardLayout
 
         if (isEmpty) {
-            val emptyLabel = (emptyPanel.getComponent(0) as JBLabel)
-            emptyLabel.text = message("unified.list.empty")
+            val searchText = searchQuery
+            when {
+                searchText.isNotEmpty() -> {
+                    setEmptyState(
+                        message("unified.list.empty.title.no_results", searchText),
+                        message("unified.list.empty.body.no_results"),
+                        message("unified.list.empty.action.clear_search")
+                    ) { clearSearch() }
+                }
+                moduleFilter != null -> {
+                    val moduleName = moduleFilter ?: ""
+                    setEmptyState(
+                        message("unified.list.empty.title.module", moduleName),
+                        message("unified.list.empty.body.module"),
+                        message("unified.list.empty.action.refresh")
+                    ) { onRefreshRequested?.invoke() }
+                }
+                else -> {
+                    setEmptyState(
+                        message("unified.list.empty.title.no_packages"),
+                        message("unified.list.empty.body.no_packages"),
+                        message("unified.list.empty.action.refresh")
+                    ) { onRefreshRequested?.invoke() }
+                }
+            }
             layout.show(contentPanel, "empty")
         } else {
             layout.show(contentPanel, "list")
         }
     }
 
+    private fun setEmptyState(title: String, body: String, actionText: String?, action: (() -> Unit)?) {
+        emptyTitleLabel.text = title
+        emptyBodyLabel.text = "<html><div style='text-align: center;'>$body</div></html>"
+        emptyAction = action
+        if (actionText == null || action == null) {
+            emptyActionLink.isVisible = false
+        } else {
+            emptyActionLink.setHyperlinkText(actionText)
+            emptyActionLink.isVisible = true
+        }
+    }
+
     /**
      * Get the search text.
      */
-    fun getSearchText(): String = searchField.text.trim()
+    fun getSearchText(): String = searchQuery
+
+    /**
+     * Set the search text (from toolbar).
+     */
+    fun setSearchText(text: String) {
+        searchQuery = text.trim()
+        applyFilters()
+    }
 
     /**
      * Clear the search text.
      */
     fun clearSearch() {
-        searchField.text = ""
+        searchQuery = ""
         applyFilters()
     }
 
@@ -694,7 +765,7 @@ class PackageListPanel(
         private val chevronLabel = JBLabel()
         private val titleLabel = JBLabel()
         private val countLabel = JBLabel()
-        private val learnMoreLabel = JBLabel()
+        private val learnMoreLabel = HyperlinkLabel()
 
         init {
             border = JBUI.Borders.empty(12, 8, 8, 8)
@@ -712,15 +783,15 @@ class PackageListPanel(
                     font = font.deriveFont(Font.BOLD, 12f)
                 })
                 add(countLabel.apply {
-                    foreground = JBColor.GRAY
+                    foreground = UdmColors.secondaryText
                     font = font.deriveFont(11f)
                 })
             }
 
             // Right: Learn more link
             learnMoreLabel.apply {
-                foreground = JBColor(0x4A90D9, 0x589DF6)
-                font = font.deriveFont(11f)
+                foreground = UdmColors.link
+                font = learnMoreFont
                 cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
             }
 
@@ -737,7 +808,7 @@ class PackageListPanel(
             }
             titleLabel.text = header.title
             countLabel.text = if (header.count > 0) "(${header.count})" else ""
-            learnMoreLabel.text = header.learnMoreText ?: ""
+            learnMoreLabel.setHyperlinkText(header.learnMoreText ?: "")
             learnMoreLabel.isVisible = header.learnMoreText != null
         }
     }
@@ -753,11 +824,11 @@ class PackageListPanel(
         private val badgePanel = JPanel(FlowLayout(FlowLayout.RIGHT, 4, 0))
 
         // Status colors
-        private val vulnerableColor = JBColor(0xF44336, 0xE57373)
-        private val updateColor = JBColor(0x4CAF50, 0x81C784)
-        private val deprecatedColor = JBColor(0xFF9800, 0xFFB74D)
-        private val transitiveColor = JBColor(0x9E9E9E, 0x757575)
-        private val prereleaseColor = JBColor(0x9C27B0, 0xBA68C8)
+        private val vulnerableColor = UdmColors.error
+        private val updateColor = UdmColors.success
+        private val deprecatedColor = UdmColors.warning
+        private val transitiveColor = UdmColors.secondaryText
+        private val prereleaseColor = UdmColors.violet
 
         init {
             border = JBUI.Borders.empty(8, 8, 8, 8)
@@ -786,11 +857,11 @@ class PackageListPanel(
                         font = font.deriveFont(Font.BOLD, 13f)
                     })
                     add(JBLabel(message("unified.tooltip.by")).apply {
-                        foreground = JBColor.GRAY
+                        foreground = UdmColors.secondaryText
                         font = font.deriveFont(11f)
                     })
                     add(publisherLabel.apply {
-                        foreground = JBColor.GRAY
+                        foreground = UdmColors.secondaryText
                         font = font.deriveFont(11f)
                     })
                 }
@@ -801,7 +872,7 @@ class PackageListPanel(
                 gbc.gridy = 1
                 gbc.insets = JBUI.insets(2, 0, 0, 0)
                 add(descriptionLabel.apply {
-                    foreground = JBColor.GRAY
+                    foreground = UdmColors.secondaryText
                     font = font.deriveFont(12f)
                 }, gbc)
             }
@@ -838,14 +909,14 @@ class PackageListPanel(
             }
 
             publisherLabel.text = pkg.publisher
-            publisherLabel.foreground = if (isSelected) textColor else JBColor.GRAY
+            publisherLabel.foreground = if (isSelected) textColor else UdmColors.secondaryText
 
             // Description - truncate if too long
             val desc = pkg.description?.let { description ->
                 if (description.length > 100) "${description.take(100)}..." else description
             } ?: message("unified.details.no.description")
             descriptionLabel.text = desc
-            descriptionLabel.foreground = if (isSelected) textColor else JBColor.GRAY
+            descriptionLabel.foreground = if (isSelected) textColor else UdmColors.secondaryText
 
             // Clear and rebuild badge panel
             badgePanel.removeAll()
@@ -895,10 +966,12 @@ class PackageListPanel(
                 sb.append(message("unified.tooltip.installed", pkg.installedVersion ?: "")).append("<br>")
             }
             if (status.hasUpdate) {
-                sb.append("<font color='green'>").append(message("unified.tooltip.update", status.updateVersion ?: "")).append("</font><br>")
+                sb.append("<font color='#").append(UdmColors.htmlColor(updateColor)).append("'>")
+                    .append(message("unified.tooltip.update", status.updateVersion ?: "")).append("</font><br>")
             }
             if (status.isVulnerable) {
-                sb.append("<font color='red'>").append(message("unified.tooltip.vulnerable")).append("</font><br>")
+                sb.append("<font color='#").append(UdmColors.htmlColor(vulnerableColor)).append("'>")
+                    .append(message("unified.tooltip.vulnerable")).append("</font><br>")
                 status.vulnerabilityInfo?.let { vuln ->
                     vuln.cveId?.let { sb.append(message("unified.tooltip.vulnerable.cve", it)).append("<br>") }
                     sb.append(message("unified.tooltip.vulnerable.severity", vuln.severity)).append("<br>")
@@ -906,14 +979,17 @@ class PackageListPanel(
                 }
             }
             if (status.isDeprecated) {
-                sb.append("<font color='orange'>").append(message("unified.tooltip.deprecated")).append("</font><br>")
+                sb.append("<font color='#").append(UdmColors.htmlColor(deprecatedColor)).append("'>")
+                    .append(message("unified.tooltip.deprecated")).append("</font><br>")
                 status.deprecationMessage?.let { sb.append(it) }
             }
             if (status.isTransitive) {
-                sb.append("<font color='gray'>").append(message("unified.tooltip.transitive")).append("</font><br>")
+                sb.append("<font color='#").append(UdmColors.htmlColor(transitiveColor)).append("'>")
+                    .append(message("unified.tooltip.transitive")).append("</font><br>")
             }
             if (status.isPrerelease) {
-                sb.append("<font color='purple'>").append(message("unified.tooltip.prerelease")).append("</font><br>")
+                sb.append("<font color='#").append(UdmColors.htmlColor(prereleaseColor)).append("'>")
+                    .append(message("unified.tooltip.prerelease")).append("</font><br>")
             }
 
             sb.append("</html>")
@@ -944,7 +1020,7 @@ class PackageListPanel(
                 val arrowY = iconHeight - arrowSize + 2
 
                 // Draw arrow background circle
-                g2d.color = JBColor(0x4CAF50, 0x81C784) // Green
+                g2d.color = UdmColors.success
                 g2d.fillOval(arrowX - 1, arrowY - 1, arrowSize + 2, arrowSize + 2)
 
                 // Draw diagonal arrow pointing up-right

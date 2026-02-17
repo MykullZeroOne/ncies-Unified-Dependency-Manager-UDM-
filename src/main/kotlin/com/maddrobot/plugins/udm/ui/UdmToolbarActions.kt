@@ -14,7 +14,6 @@ import com.maddrobot.plugins.udm.licensing.Feature
 import com.maddrobot.plugins.udm.licensing.LicenseChecker
 import com.maddrobot.plugins.udm.licensing.PremiumFeatureGuard
 import javax.swing.*
-import java.awt.Dimension
 import java.awt.event.KeyEvent
 
 /**
@@ -44,7 +43,7 @@ class SearchPackagesAction(
     override fun createCustomComponent(presentation: Presentation, place: String): JComponent {
         return SearchTextField(true).apply {
             textEditor.emptyText.text = message("unified.list.search.placeholder")
-            preferredSize = Dimension(200, preferredSize.height)
+            textEditor.columns = 24
 
             addDocumentListener(object : com.intellij.ui.DocumentAdapter() {
                 override fun textChanged(e: javax.swing.event.DocumentEvent) {
@@ -146,7 +145,7 @@ class FeedSelectorAction(
 
     private var feeds: List<RepositoryConfig> = emptyList()
     private var selectedFeed: RepositoryConfig? = null
-    private val allFeedsText = "All Repositories"
+    private val allFeedsText = message("unified.toolbar.feed.all")
 
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
 
@@ -199,7 +198,7 @@ class PrereleaseToggleAction(
 ) : ToggleAction(
     message("unified.filter.prerelease"),
     "Include prerelease versions (alpha, beta, RC, SNAPSHOT)",
-    AllIcons.General.Filter
+    AllIcons.General.Beta
 ), DumbAware {
 
     private var isIncluded = false

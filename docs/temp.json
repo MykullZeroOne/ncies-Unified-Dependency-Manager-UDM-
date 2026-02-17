@@ -1,0 +1,347 @@
+{
+  "pan": {
+    "plainText": "5559208303897972"
+  },
+  "dateLastUsed": "0001-01-01T00:00:00.000000",
+  "dateLastUpdated": "2025-09-24T07:07:08.880000",
+  "dateLastMaintained": "2025-09-24T07:07:08.880000",
+  "enterpriseCustomerId": "25467",
+  "financialInstitutionId": "1845025224",
+  "card": {
+    "pinFailCount": "0",
+    "limitGroup": "U60202",
+    "canWithdraw": "Y",
+    "canDeposit": "Y",
+    "canInquire": "Y",
+    "paymentsTo": "Y",
+    "paymentsFrom": "Y",
+    "transfersTo": "Y",
+    "transfersFrom": "Y",
+    "canPurchase": "Y",
+    "thirdPartyPayment": "Y",
+    "pinOffsetIndicator": "00",
+    "pinOffset": "0000",
+    "expirationDate": "2805",
+    "greetingName": "GREG",
+    "mobileEnrollment": "Y",
+    "avsData": "",
+    "consecutiveRejects": "",
+    "alternateCardType": "",
+    "loyaltyOptOutFlag": "N",
+    "lastDemographicUpdated": "2023-04-01T19:11:21",
+    "cardStatus": {
+      "status": "Pending Activation",
+      "subStatus": null,
+      "hostValue": "OK-N"
+    },
+    "previousCardStatus": {
+      "status": "",
+      "subStatus": "",
+      "hostValue": ""
+    },
+    "lastCardStatusUpdated": "2025-09-24T12:07:07",
+    "activationStatus": "N",
+    "activationMethod": {
+      "description": "--",
+      "hostDescription": "Waiting activation",
+      "hostValue": "X"
+    },
+    "activationTime": "2025-09-24T12:07:07",
+    "optOutVauAbuFlag": "N",
+    "previousCardExpirationDate": "",
+    "previousCardActivationStatus": "",
+    "lastTimePinChanged": "2025-05-02T12:07:07",
+    "cardMediaType": {
+      "description": "Mag Stripe, Contact Chip, and Contactless",
+      "hostDescription": "Mag Stripe, Contact Chip, and Contactless",
+      "hostValue": "IP"
+    },
+    "serviceCode": {
+      "description": "",
+      "hostDescription": "",
+      "hostValue": ""
+    },
+    "cardProfile": "",
+    "autoIssueIndicator": "Y",
+    "cardAssociation": {
+      "description": "MasterCard",
+      "hostDescription": "MasterCard",
+      "hostValue": "M"
+    },
+    "cardType": {
+      "description": "Debit",
+      "hostDescription": "Debit",
+      "hostValue": "DR"
+    },
+    "cardSubType": {
+      "description": "Consumer",
+      "hostDescription": "Consumer",
+      "hostValue": "CO"
+    },
+    "customerSince": "0001-01-01",
+    "vipIndicator": "N",
+    "embossedBusiness": "",
+    "cardCategory": {
+      "description": "Standard",
+      "hostDescription": "Standard",
+      "hostValue": "ST"
+    },
+    "hasCardCompanionMini": "N",
+    "hasCardCompanionMicro": "N",
+    "hasCardCompanionMobile": "N",
+    "contactPreference": {
+      "description": "Primary Phone",
+      "hostDescription": "Primary Phone",
+      "hostValue": "H"
+    },
+    "creditLimit": "0",
+    "cashLimit": "0",
+    "powerOfAttorneyFlag": "N",
+    "powerOfAttorneyName": "",
+    "bankBranchNumber": "",
+    "vruCounterCardActivation": "0",
+    "vruCounterPinChange": "0",
+    "alertEventNumber": "",
+    "alertEventDate": "0001-01-01",
+    "alertEventCounter": "",
+    "scheduledBlockDate": "2025-05-02T12:07:07",
+    "severityLevel": "",
+    "travelIndicator": {
+      "description": "None",
+      "hostDescription": "None",
+      "hostValue": "N"
+    },
+    "travelStartDate": "0001-01-01",
+    "travelEndDate": "0001-01-01",
+    "addresses": [
+      {
+        "lastAddressUpdated": "2011-09-02T04:00:00",
+        "addressType": {
+          "description": "Temporary",
+          "hostDescription": "Secondary",
+          "hostValue": "S"
+        },
+        "addressFormat": {
+          "description": "Domestic US",
+          "hostDescription": "Domestic US",
+          "hostValue": "D"
+        },
+        "addressLine1": "121 BARTON DR",
+        "addressLine2": "",
+        "addressLine3": "",
+        "addressLine4": "",
+        "city": "GOOSE CREEK",
+        "stateProvince": "SC",
+        "postalCode": "29445-7712",
+        "countryCode": {
+          "description": "United States of America",
+          "hostDescription": "USA",
+          "hostValue": "840"
+        },
+        "beginUsageDate": "0001-01-01",
+        "endUsageDate": "0001-01-01"
+      },
+      {
+        "lastAddressUpdated": "2025-04-25T12:05:30",
+        "addressType": {
+          "description": "Primary",
+          "hostDescription": "Primary",
+          "hostValue": "P"
+        },
+        "addressFormat": {
+          "description": "Domestic US",
+          "hostDescription": "Domestic US",
+          "hostValue": "D"
+        },
+        "addressLine1": "8452 W BLUEGRASS DR",
+        "addressLine2": "",
+        "addressLine3": "",
+        "addressLine4": "",
+        "city": "NORTH CHARLESTON",
+        "stateProvince": "SC",
+        "postalCode": "29420-7543",
+        "countryCode": {
+          "description": "United States of America",
+          "hostDescription": "USA",
+          "hostValue": "840"
+        },
+        "beginUsageDate": "0001-01-01",
+        "endUsageDate": "0001-01-01"
+      }
+    ],
+    "members": [
+      {
+        "lastMemberUpdated": "2025-05-02T12:07:07",
+        "memberNumber": "01",
+        "isPrimaryContact": "Y",
+        "firstName": "JOHNNY",
+        "lastName": "BRANT",
+        "middleInitial": "A",
+        "prefix": "",
+        "suffix": "",
+        "embossedName": "",
+        "cardOrderFlag": {
+          "description": "",
+          "hostDescription": "",
+          "hostValue": ""
+        },
+        "cardOrderStatusFlag": {
+          "description": "New Order",
+          "hostDescription": "New Order",
+          "hostValue": "1"
+        },
+        "cardOrderStatusDate": "2025-05-02",
+        "cardOrderType": {
+          "description": "Issue new card immediately",
+          "hostDescription": "Issue new card immediately",
+          "hostValue": "1"
+        },
+        "cardReplaceIndicator": "",
+        "dateOriginallyIssued": "2025-05-02",
+        "dateLastIssued": "2025-05-02",
+        "cardStockCode": "",
+        "flatCardIndicator": "",
+        "issuerStockCode": "",
+        "customImageId": "",
+        "photoId": "N",
+        "imageId": "",
+        "userValidation": "",
+        "dateOfBirth": "1951-12-10",
+        "socialSecurityNumber": "247926417       ",
+        "motherMaidenName": "",
+        "passcode": "",
+        "trackNameMatch": "",
+        "languageIndicator": {
+          "description": "English",
+          "hostDescription": "English",
+          "hostValue": "EN"
+        },
+        "emailAddress1": "",
+        "emailAddress2": "",
+        "militaryFlag": "N",
+        "militaryStartDate": "0001-01-01",
+        "militaryEndDate": "0001-01-01",
+        "phones": [
+          {
+            "foreignIndicator": "",
+            "phoneNumber": "",
+            "phoneTypeIndicator": {
+              "description": "Primary",
+              "hostDescription": "Primary",
+              "hostValue": "P"
+            },
+            "firstCallIndicator": "",
+            "secondCallIndicator": ""
+          },
+          {
+            "foreignIndicator": "",
+            "phoneNumber": "",
+            "phoneTypeIndicator": {
+              "description": "Work",
+              "hostDescription": "Work",
+              "hostValue": "W"
+            },
+            "firstCallIndicator": "",
+            "secondCallIndicator": ""
+          }
+        ]
+      }
+    ],
+    "accounts": [
+      {
+        "financialInstitutionId": "1845025224",
+        "accountNumber": "000035295003000",
+        "accountType": {
+          "description": "Savings",
+          "hostDescription": "Savings",
+          "hostValue": "SAV"
+        },
+        "accountQualifier": "",
+        "oarSelectType": {
+          "description": "Other Account",
+          "hostDescription": "Other Account",
+          "hostValue": "OTH"
+        },
+        "accountDescription": "PRIMARY SAVINGS",
+        "canAccountWithdraw": "Y",
+        "canAccountDeposit": "Y",
+        "canAccountInquiry": "Y",
+        "paymentsToAccount": "Y",
+        "paymentsFromAccount": "Y",
+        "transferToAccount": "Y",
+        "transferFromAccount": "Y",
+        "canAccountPurchase": "Y",
+        "thirdPartyPayments": "Y",
+        "primaryIndicator": "N",
+        "fundingIndicator": "N",
+        "ledgerBalance": "",
+        "availableBalance": "",
+        "creditLineAmount": "",
+        "lastTransactionTimeStamp": "2025-09-24T12:07",
+        "accountStatus": {
+          "status": "Active",
+          "subStatus": null,
+          "hostValue": "OK"
+        },
+        "overdraftAmount": "",
+        "overdraftFinancialInstitutionId": "",
+        "overdraftAccountNumber": "",
+        "overdraftAccountType": {
+          "description": "",
+          "hostDescription": "",
+          "hostValue": ""
+        }
+      },
+      {
+        "financialInstitutionId": "1845025224",
+        "accountNumber": "000000000300011",
+        "accountType": {
+          "description": "Checking",
+          "hostDescription": "Checking",
+          "hostValue": "DDA"
+        },
+        "accountQualifier": "",
+        "oarSelectType": {
+          "description": "Other Account",
+          "hostDescription": "Other Account",
+          "hostValue": "OTH"
+        },
+        "accountDescription": "EASY CHECKING",
+        "canAccountWithdraw": "Y",
+        "canAccountDeposit": "Y",
+        "canAccountInquiry": "Y",
+        "paymentsToAccount": "Y",
+        "paymentsFromAccount": "Y",
+        "transferToAccount": "Y",
+        "transferFromAccount": "Y",
+        "canAccountPurchase": "Y",
+        "thirdPartyPayments": "Y",
+        "primaryIndicator": "Y",
+        "fundingIndicator": "Y",
+        "ledgerBalance": "",
+        "availableBalance": "",
+        "creditLineAmount": "",
+        "lastTransactionTimeStamp": "2025-05-02T12:07",
+        "accountStatus": {
+          "status": "Active",
+          "subStatus": null,
+          "hostValue": "OK"
+        },
+        "overdraftAmount": "",
+        "overdraftFinancialInstitutionId": "",
+        "overdraftAccountNumber": "",
+        "overdraftAccountType": {
+          "description": "",
+          "hostDescription": "",
+          "hostValue": ""
+        }
+      }
+    ],
+    "previousCards": [],
+    "replacedByCards": []
+  },
+  "feeGroup": "",
+  "issuerPazeEligibilityFlag": "",
+  "p1DPazeEligibilityFlag": "",
+  "walletId": ""
+}

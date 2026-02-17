@@ -2,13 +2,13 @@ package com.maddrobot.plugins.udm.gradle.manager.ui
 
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.DialogWrapper
-import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.components.JBTextArea
 import com.intellij.ui.components.JBTextField
 import com.intellij.util.ui.JBUI
 import com.maddrobot.plugins.udm.PackageFinderBundle.message
+import com.maddrobot.plugins.udm.ui.UdmColors
 import com.maddrobot.plugins.udm.gradle.manager.ConfigProperty
 import com.maddrobot.plugins.udm.gradle.manager.GradlePluginConfig
 import java.awt.*
@@ -39,7 +39,7 @@ class GradlePluginConfigDialog(
         isEditable = false
         lineWrap = false
         border = JBUI.Borders.empty(4)
-        foreground = JBColor.GRAY
+        foreground = UdmColors.secondaryText
     }
 
     private var isRawMode = false
@@ -86,7 +86,7 @@ class GradlePluginConfigDialog(
     override fun createCenterPanel(): JComponent {
         val mainPanel = JPanel(BorderLayout(0, 8)).apply {
             border = JBUI.Borders.empty(8)
-            preferredSize = Dimension(550, 500)
+            minimumSize = JBUI.size(520, 420)
         }
 
         // Top: Extension name
@@ -95,7 +95,7 @@ class GradlePluginConfigDialog(
         topPanel.add(extensionNameField)
         if (initialExtensionName == null) {
             topPanel.add(JBLabel(message("unified.plugin.configure.gradle.no.known.extension")).apply {
-                foreground = JBColor.GRAY
+                foreground = UdmColors.secondaryText
                 font = font.deriveFont(10f)
             })
         }
@@ -165,7 +165,7 @@ class GradlePluginConfigDialog(
             font = font.deriveFont(Font.BOLD, 11f)
         }, BorderLayout.NORTH)
         previewPanel.add(JBScrollPane(previewArea).apply {
-            preferredSize = Dimension(0, 100)
+            minimumSize = JBUI.size(0, 100)
         }, BorderLayout.CENTER)
         mainPanel.add(previewPanel, BorderLayout.SOUTH)
 
@@ -207,12 +207,12 @@ class GradlePluginConfigDialog(
             emptyText.text = message("unified.plugin.configure.gradle.property.value.placeholder")
         }
         val removeButton = JButton(message("unified.plugin.configure.gradle.remove.property")).apply {
-            preferredSize = Dimension(80, 28)
+            minimumSize = JBUI.size(72, 28)
         }
 
         val rowPanel = JPanel(FlowLayout(FlowLayout.LEFT, 4, 2)).apply {
             alignmentX = Component.LEFT_ALIGNMENT
-            maximumSize = Dimension(Int.MAX_VALUE, 36)
+            maximumSize = Dimension(Int.MAX_VALUE, JBUI.scale(36))
         }
         rowPanel.add(nameField)
         rowPanel.add(JBLabel("="))
@@ -280,4 +280,6 @@ class GradlePluginConfigDialog(
         }
         super.doOKAction()
     }
+
+    override fun getPreferredFocusedComponent(): JComponent? = extensionNameField
 }

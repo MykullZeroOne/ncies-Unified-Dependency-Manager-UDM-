@@ -1,9 +1,15 @@
 package com.maddrobot.plugins.udm.gradle.manager
 
 import com.intellij.openapi.diagnostic.Logger
+import com.maddrobot.plugins.udm.util.VersionClassifier
 import org.jsoup.Jsoup
 import java.io.IOException
+import java.io.StringReader
+import java.net.HttpURLConnection
+import java.net.URI
 import java.util.concurrent.ConcurrentHashMap
+import javax.xml.parsers.DocumentBuilderFactory
+import org.xml.sax.InputSource
 
 /**
  * Service for checking updates for installed Gradle plugins via the Gradle Plugin Portal.
@@ -13,6 +19,7 @@ object GradlePluginUpdateService {
     private val log = Logger.getInstance(javaClass)
 
     private const val GRADLE_PLUGIN_PORTAL_URL = "https://plugins.gradle.org/plugin"
+    private const val GRADLE_PLUGIN_PORTAL_MAVEN_BASE = "https://plugins.gradle.org/m2"
     private const val USER_AGENT =
         "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36"
     private const val TIMEOUT_MS = 30_000
@@ -20,6 +27,8 @@ object GradlePluginUpdateService {
     // Cache for plugin versions (pluginId -> latestVersion)
     private val versionCache = ConcurrentHashMap<String, CachedVersion>()
     private const val CACHE_TTL_MS = 3600_000L // 1 hour
+    private val stableVersionCache = ConcurrentHashMap<String, CachedVersion>()
+    private const val STABLE_CACHE_TTL_MS = 3600_000L // 1 hour
 
     private data class CachedVersion(
         val version: String?,
@@ -66,6 +75,14 @@ object GradlePluginUpdateService {
         return version
     }
 
+    fun getLatestVersion(pluginId: String, includePrerelease: Boolean): String? {
+        return if (includePrerelease) {
+            getLatestVersion(pluginId)
+        } else {
+            getLatestStableVersion(pluginId)
+        }
+    }
+
     /**
      * Check for updates for a list of installed plugins.
      *
@@ -73,13 +90,20 @@ object GradlePluginUpdateService {
      * @return List of PluginUpdate objects for plugins that have updates available
      */
     fun checkForUpdates(plugins: List<InstalledPlugin>): List<PluginUpdate> {
+        return checkForUpdates(plugins, includePrerelease = true)
+    }
+
+    fun checkForUpdates(
+        plugins: List<InstalledPlugin>,
+        includePrerelease: Boolean
+    ): List<PluginUpdate> {
         val updates = mutableListOf<PluginUpdate>()
 
         for (plugin in plugins) {
             // Skip plugins without versions
             if (plugin.version == null) continue
 
-            val latestVersion = getLatestVersion(plugin.pluginId)
+            val latestVersion = getLatestVersion(plugin.pluginId, includePrerelease)
             if (latestVersion != null && latestVersion != plugin.version) {
                 // Compare versions - only add if latest is actually newer
                 if (isNewerVersion(latestVersion, plugin.version)) {
@@ -104,6 +128,18 @@ object GradlePluginUpdateService {
         val info = fetchPluginPortalInfo(pluginId)
         portalInfoCache[pluginId] = CachedPortalInfo(info, System.currentTimeMillis())
         return info
+    }
+
+    private fun getLatestStableVersion(pluginId: String): String? {
+        val cached = stableVersionCache[pluginId]
+        if (cached != null && System.currentTimeMillis() - cached.timestamp < STABLE_CACHE_TTL_MS) {
+            return cached.version
+        }
+
+        val versions = fetchPluginPortalVersions(pluginId)
+        val stableVersion = VersionClassifier.selectLatestStable(versions)
+        stableVersionCache[pluginId] = CachedVersion(stableVersion, System.currentTimeMillis())
+        return stableVersion
     }
 
     /**
@@ -155,6 +191,42 @@ object GradlePluginUpdateService {
         } catch (e: Exception) {
             log.warn("Unexpected error fetching plugin version for $pluginId", e)
             null
+        }
+    }
+
+    private fun fetchPluginPortalVersions(pluginId: String): List<String> {
+        return try {
+            val groupPath = pluginId.replace('.', '/')
+            val artifactId = "$pluginId.gradle.plugin"
+            val url = "$GRADLE_PLUGIN_PORTAL_MAVEN_BASE/$groupPath/$artifactId/maven-metadata.xml"
+
+            val connection = URI.create(url).toURL().openConnection() as HttpURLConnection
+            connection.requestMethod = "GET"
+            connection.connectTimeout = TIMEOUT_MS
+            connection.readTimeout = TIMEOUT_MS
+            connection.setRequestProperty("Accept", "application/xml")
+
+            if (connection.responseCode != 200) {
+                log.debug("Plugin portal metadata returned ${connection.responseCode} for $pluginId")
+                return emptyList()
+            }
+
+            val xml = connection.inputStream.bufferedReader().readText()
+            val builder = DocumentBuilderFactory.newInstance().newDocumentBuilder()
+            val doc = builder.parse(InputSource(StringReader(xml)))
+            val versions = doc.getElementsByTagName("version")
+
+            val results = mutableListOf<String>()
+            for (i in 0 until versions.length) {
+                val value = versions.item(i)?.textContent?.trim()
+                if (!value.isNullOrBlank()) {
+                    results.add(value)
+                }
+            }
+            results
+        } catch (e: Exception) {
+            log.debug("Failed to fetch plugin versions for $pluginId: ${e.message}")
+            emptyList()
         }
     }
 

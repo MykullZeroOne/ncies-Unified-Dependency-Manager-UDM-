@@ -14,12 +14,12 @@ import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import com.intellij.util.ui.tree.TreeUtil
 import com.maddrobot.plugins.udm.PackageFinderBundle.message
+import com.maddrobot.plugins.udm.ui.UdmColors
 import com.maddrobot.plugins.udm.gradle.manager.model.UnifiedPackage
 import com.maddrobot.plugins.udm.gradle.manager.service.TransitiveDependency
 import com.maddrobot.plugins.udm.gradle.manager.service.TransitiveDependencyService
 import java.awt.BorderLayout
 import java.awt.Component
-import java.awt.Dimension
 import java.awt.FlowLayout
 import java.awt.datatransfer.StringSelection
 import java.awt.event.MouseAdapter
@@ -87,7 +87,7 @@ class DependencyTreeDialog(
 
     override fun createCenterPanel(): JComponent {
         val panel = JPanel(BorderLayout())
-        panel.preferredSize = Dimension(600, 500)
+        panel.minimumSize = JBUI.size(560, 420)
         panel.border = JBUI.Borders.empty(10)
 
         // Header with package info
@@ -187,7 +187,7 @@ class DependencyTreeDialog(
             border = JBUI.Borders.emptyTop(10)
 
             statusLabel = JBLabel().apply {
-                foreground = JBColor.GRAY
+                foreground = UdmColors.secondaryText
             }
             add(statusLabel, BorderLayout.WEST)
 
@@ -223,6 +223,8 @@ class DependencyTreeDialog(
 
         return panel
     }
+
+    override fun getPreferredFocusedComponent(): JComponent? = searchField
 
     private fun loadDependencies() {
         if (isLoading) return

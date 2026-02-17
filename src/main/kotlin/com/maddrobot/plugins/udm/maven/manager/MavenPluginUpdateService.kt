@@ -3,8 +3,11 @@ package com.maddrobot.plugins.udm.maven.manager
 import com.google.gson.Gson
 import com.google.gson.JsonObject
 import com.intellij.openapi.diagnostic.Logger
+import com.maddrobot.plugins.udm.maven.DependencyService
+import com.maddrobot.plugins.udm.util.VersionClassifier
 import java.net.HttpURLConnection
 import java.net.URI
+import java.net.URLEncoder
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -21,6 +24,8 @@ object MavenPluginUpdateService {
     // Cache for plugin versions (pluginId -> latestVersion)
     private val versionCache = ConcurrentHashMap<String, CachedVersion>()
     private const val CACHE_TTL_MS = 3600_000L // 1 hour
+    private val stableVersionCache = ConcurrentHashMap<String, CachedVersion>()
+    private const val STABLE_CACHE_TTL_MS = 3600_000L // 1 hour
 
     private data class CachedVersion(
         val version: String?,
@@ -36,6 +41,18 @@ object MavenPluginUpdateService {
      * @return The latest version string, or null if not found or on error
      */
     fun getLatestVersion(groupId: String, artifactId: String): String? {
+        return getLatestVersion(groupId, artifactId, includePrerelease = true)
+    }
+
+    fun getLatestVersion(groupId: String, artifactId: String, includePrerelease: Boolean): String? {
+        return if (includePrerelease) {
+            getLatestVersionInternal(groupId, artifactId)
+        } else {
+            getLatestStableVersion(groupId, artifactId)
+        }
+    }
+
+    private fun getLatestVersionInternal(groupId: String, artifactId: String): String? {
         val cacheKey = "$groupId:$artifactId"
 
         // Check cache first
@@ -53,6 +70,19 @@ object MavenPluginUpdateService {
         return version
     }
 
+    private fun getLatestStableVersion(groupId: String, artifactId: String): String? {
+        val cacheKey = "$groupId:$artifactId"
+
+        val cached = stableVersionCache[cacheKey]
+        if (cached != null && System.currentTimeMillis() - cached.timestamp < STABLE_CACHE_TTL_MS) {
+            return cached.version
+        }
+
+        val stableVersion = fetchLatestStableVersion(groupId, artifactId)
+        stableVersionCache[cacheKey] = CachedVersion(stableVersion, System.currentTimeMillis())
+        return stableVersion
+    }
+
     /**
      * Check for updates for a list of installed plugins.
      *
@@ -60,13 +90,20 @@ object MavenPluginUpdateService {
      * @return List of MavenPluginUpdate objects for plugins that have updates available
      */
     fun checkForUpdates(plugins: List<MavenInstalledPlugin>): List<MavenPluginUpdate> {
+        return checkForUpdates(plugins, includePrerelease = true)
+    }
+
+    fun checkForUpdates(
+        plugins: List<MavenInstalledPlugin>,
+        includePrerelease: Boolean
+    ): List<MavenPluginUpdate> {
         val updates = mutableListOf<MavenPluginUpdate>()
 
         for (plugin in plugins) {
             // Skip plugins without versions
             if (plugin.version == null) continue
 
-            val latestVersion = getLatestVersion(plugin.groupId, plugin.artifactId)
+            val latestVersion = getLatestVersion(plugin.groupId, plugin.artifactId, includePrerelease)
             if (latestVersion != null && latestVersion != plugin.version) {
                 // Compare versions - only add if latest is actually newer
                 if (isNewerVersion(latestVersion, plugin.version)) {
@@ -85,7 +122,7 @@ object MavenPluginUpdateService {
         return try {
             // Build search URL
             val query = "g:\"$groupId\" AND a:\"$artifactId\""
-            val url = "$MAVEN_CENTRAL_SEARCH_URL?q=${java.net.URLEncoder.encode(query, "UTF-8")}&rows=1&wt=json"
+            val url = "$MAVEN_CENTRAL_SEARCH_URL?q=${URLEncoder.encode(query, "UTF-8")}&rows=1&wt=json"
 
             val connection = URI.create(url).toURL().openConnection() as HttpURLConnection
             connection.requestMethod = "GET"
@@ -117,6 +154,47 @@ object MavenPluginUpdateService {
 
         } catch (e: Exception) {
             log.debug("Failed to fetch plugin version for $groupId:$artifactId: ${e.message}")
+            null
+        }
+    }
+
+    /**
+     * Fetch latest stable version from Maven Central (core=gav) and filter prereleases.
+     */
+    private fun fetchLatestStableVersion(groupId: String, artifactId: String): String? {
+        return try {
+            val url = DependencyService.mavenSearchUrl("$groupId:$artifactId", rowsLimit = 25)
+
+            val connection = URI.create(url).toURL().openConnection() as HttpURLConnection
+            connection.requestMethod = "GET"
+            connection.connectTimeout = TIMEOUT_MS
+            connection.readTimeout = TIMEOUT_MS
+            connection.setRequestProperty("Accept", "application/json")
+
+            if (connection.responseCode != 200) {
+                log.debug("Maven Central returned ${connection.responseCode} for $groupId:$artifactId (stable)")
+                return null
+            }
+
+            val response = connection.inputStream.bufferedReader().readText()
+            val json = gson.fromJson(response, JsonObject::class.java)
+            val responseNode = json.getAsJsonObject("response")
+            val docs = responseNode?.getAsJsonArray("docs")
+
+            val versions = mutableListOf<String>()
+            if (docs != null) {
+                for (docElement in docs) {
+                    val doc = docElement.asJsonObject
+                    val version = doc.get("v")?.asString ?: doc.get("version")?.asString
+                    if (!version.isNullOrBlank()) {
+                        versions.add(version)
+                    }
+                }
+            }
+
+            VersionClassifier.selectLatestStable(versions)
+        } catch (e: Exception) {
+            log.debug("Failed to fetch stable plugin version for $groupId:$artifactId: ${e.message}")
             null
         }
     }

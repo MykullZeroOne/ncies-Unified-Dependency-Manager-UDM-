@@ -12,6 +12,7 @@ import com.intellij.ui.SearchTextField
 import com.intellij.ui.SideBorder
 import com.intellij.ui.dsl.builder.bindItem
 import com.intellij.ui.dsl.builder.panel
+import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.NamedColorUtil
 import com.maddrobot.plugins.udm.PackageFinderBundle.message
 import com.maddrobot.plugins.udm.listener.SettingsChangedListener
@@ -87,15 +88,14 @@ class MavenToolWindow(parentDisposable: Disposable) {
     private fun createPanel(): JPanel {
         return borderPanel {
             val topToolbar = boxPanel {
-                border = SideBorder(NamedColorUtil.getBoundsColor(), SideBorder.BOTTOM)
-                // Set the height of topToolbar to 50
-                preferredSize = Dimension(preferredSize.width, 50)
-                minimumSize = Dimension(minimumSize.width, 50)
-                maximumSize = Dimension(maximumSize.width, 50)
+                border = JBUI.Borders.compound(
+                    SideBorder(NamedColorUtil.getBoundsColor(), SideBorder.BOTTOM),
+                    JBUI.Borders.empty(6, 8)
+                )
 
                 add(searchTextField)
                 // Spacing
-                add(Box.createRigidArea(Dimension(10, 0)))
+                add(Box.createHorizontalStrut(JBUI.scale(8)))
 
                 add(repositoryAndDependencyFormatPanel())
 
@@ -117,9 +117,7 @@ class MavenToolWindow(parentDisposable: Disposable) {
                 java.util.function.Function<javax.swing.JTextField, Boolean> { true })
 
             // Width
-            preferredSize = Dimension(450, preferredSize.height)
-            minimumSize = Dimension(450, minimumSize.height)
-            maximumSize = Dimension(450, maximumSize.height)
+            textEditor.columns = 24
 
             addKeyboardListener(object : KeyAdapter() {
                 override fun keyReleased(e: KeyEvent) {

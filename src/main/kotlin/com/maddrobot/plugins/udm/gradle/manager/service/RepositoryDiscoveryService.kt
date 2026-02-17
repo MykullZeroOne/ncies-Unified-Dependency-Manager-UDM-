@@ -747,10 +747,11 @@ class RepositoryDiscoveryService(private val project: Project) {
 
     private fun extractRepoName(url: String): String {
         return try {
-            java.net.URL(url).host
-                .removePrefix("www.")
-                .split(".")
-                .firstOrNull()
+            val host = java.net.URI.create(url).host
+            host
+                ?.removePrefix("www.")
+                ?.split(".")
+                ?.firstOrNull()
                 ?.replaceFirstChar { it.uppercase() }
                 ?: url
         } catch (e: Exception) {

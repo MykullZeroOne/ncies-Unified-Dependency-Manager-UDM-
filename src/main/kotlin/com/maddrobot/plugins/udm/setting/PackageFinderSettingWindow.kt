@@ -3,12 +3,12 @@ package com.maddrobot.plugins.udm.setting
 import com.intellij.openapi.options.BoundConfigurable
 import com.intellij.openapi.ui.DialogPanel
 import com.intellij.openapi.ui.Messages
-import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBTextField
 import com.intellij.ui.dsl.builder.*
 import com.maddrobot.plugins.udm.PackageFinderBundle.message
 import com.maddrobot.plugins.udm.licensing.LicenseChecker
+import com.maddrobot.plugins.udm.ui.UdmColors
 import java.awt.Font
 import javax.swing.JButton
 
@@ -136,8 +136,8 @@ class PackageFinderSettingWindow : BoundConfigurable(
                 LicenseChecker.Tier.PREMIUM -> message("settings.license.status.premium")
             }
             statusLabel.foreground = when (info.tier) {
-                LicenseChecker.Tier.FREE -> JBColor.GRAY
-                LicenseChecker.Tier.PREMIUM -> JBColor(0x4CAF50, 0x81C784)
+                LicenseChecker.Tier.FREE -> UdmColors.secondaryText
+                LicenseChecker.Tier.PREMIUM -> UdmColors.success
             }
         }
 

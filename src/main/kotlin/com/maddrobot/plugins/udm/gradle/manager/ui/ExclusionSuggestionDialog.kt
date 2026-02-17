@@ -14,6 +14,7 @@ import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.util.ui.JBUI
 import com.maddrobot.plugins.udm.PackageFinderBundle.message
+import com.maddrobot.plugins.udm.ui.UdmColors
 import com.maddrobot.plugins.udm.gradle.manager.InstalledDependency
 import com.maddrobot.plugins.udm.gradle.manager.service.BuildSystem
 import com.maddrobot.plugins.udm.gradle.manager.service.ExclusionSuggestion
@@ -21,7 +22,6 @@ import com.maddrobot.plugins.udm.gradle.manager.service.ExclusionSuggestionServi
 import com.maddrobot.plugins.udm.gradle.manager.service.SuggestionSeverity
 import com.maddrobot.plugins.udm.gradle.manager.service.SuggestionSource
 import java.awt.BorderLayout
-import java.awt.Dimension
 import java.awt.FlowLayout
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
@@ -56,7 +56,7 @@ class ExclusionSuggestionDialog(
     }
     private val progressLabel = JBLabel(message("unified.exclusion.suggestion.loading")).apply {
         icon = AllIcons.Process.Step_1
-        foreground = JBColor.GRAY
+        foreground = UdmColors.secondaryText
     }
     private val contentPanel = JPanel(BorderLayout())
     private var suggestions: List<ExclusionSuggestion> = emptyList()
@@ -81,7 +81,7 @@ class ExclusionSuggestionDialog(
 
     override fun createCenterPanel(): JComponent {
         val mainPanel = JPanel(BorderLayout()).apply {
-            preferredSize = Dimension(600, 450)
+            minimumSize = JBUI.size(560, 420)
             border = JBUI.Borders.empty(8)
         }
 
@@ -190,7 +190,7 @@ class ExclusionSuggestionDialog(
         if (totalCacheMisses > 0) {
             val hasMaven = dependencySets.any { it.buildSystem == BuildSystem.MAVEN }
             val hasGradle = dependencySets.any { it.buildSystem == BuildSystem.GRADLE }
-            val warningColor = if (totalCacheMisses == totalAnalyzed) JBColor.ORANGE else JBColor.GRAY
+            val warningColor = if (totalCacheMisses == totalAnalyzed) UdmColors.warning else UdmColors.secondaryText
             val warningHex = String.format("#%06x", warningColor.rgb and 0xFFFFFF)
             val warningText = if (totalCacheMisses == totalAnalyzed) {
                 message("unified.exclusion.suggestion.cache.missing.all", totalCacheMisses, totalAnalyzed)
@@ -226,7 +226,7 @@ class ExclusionSuggestionDialog(
         if (suggestions.isEmpty() && totalCacheMisses == 0) {
             contentPanel.add(JBLabel(message("unified.exclusion.suggestion.empty")).apply {
                 horizontalAlignment = SwingConstants.CENTER
-                foreground = JBColor.GRAY
+                foreground = UdmColors.secondaryText
             }, BorderLayout.CENTER)
         } else if (suggestions.isEmpty()) {
             // All POMs missing - warning banner is already shown, just add empty center
@@ -259,7 +259,7 @@ class ExclusionSuggestionDialog(
             }
 
             val scrollPane = JBScrollPane(checkBoxList).apply {
-                preferredSize = Dimension(0, 350)
+                minimumSize = JBUI.size(0, 300)
             }
             contentPanel.add(scrollPane, BorderLayout.CENTER)
 
@@ -276,7 +276,7 @@ class ExclusionSuggestionDialog(
             val summaryText = message("unified.exclusion.suggestion.summary", suggestions.size, details)
             contentPanel.add(JBLabel(summaryText).apply {
                 border = JBUI.Borders.emptyTop(8)
-                foreground = JBColor.GRAY
+                foreground = UdmColors.secondaryText
             }, BorderLayout.SOUTH)
         }
 
@@ -349,8 +349,11 @@ class ExclusionSuggestionDialog(
                 currentProcessHandler = handler
                 val output = StringBuilder()
 
-                handler.addProcessListener(object : com.intellij.execution.process.ProcessAdapter() {
-                    override fun onTextAvailable(event: com.intellij.execution.process.ProcessEvent, outputType: com.intellij.openapi.util.Key<*>) {
+                handler.addProcessListener(object : com.intellij.execution.process.ProcessListener {
+                    override fun onTextAvailable(
+                        event: com.intellij.execution.process.ProcessEvent,
+                        outputType: com.intellij.openapi.util.Key<*>
+                    ) {
                         output.append(event.text)
                         val line = event.text.trim()
                         if (line.isNotEmpty()) {
@@ -360,6 +363,21 @@ class ExclusionSuggestionDialog(
                                 }
                             }, ModalityState.any())
                         }
+                    }
+
+                    override fun processTerminated(event: com.intellij.execution.process.ProcessEvent) {
+                        // No-op.
+                    }
+
+                    override fun processWillTerminate(
+                        event: com.intellij.execution.process.ProcessEvent,
+                        willBeDestroyed: Boolean
+                    ) {
+                        // No-op.
+                    }
+
+                    override fun startNotified(event: com.intellij.execution.process.ProcessEvent) {
+                        // No-op.
                     }
                 })
                 handler.startNotify()
@@ -407,6 +425,8 @@ class ExclusionSuggestionDialog(
             }
         }
     }
+
+    override fun getPreferredFocusedComponent(): JComponent? = checkBoxList
 
     /**
      * Reset dialog state to loading and re-run the analysis.

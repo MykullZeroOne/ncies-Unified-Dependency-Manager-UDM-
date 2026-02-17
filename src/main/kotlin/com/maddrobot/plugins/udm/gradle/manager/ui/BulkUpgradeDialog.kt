@@ -6,7 +6,6 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.DialogWrapper
 import com.intellij.ui.CheckboxTree
 import com.intellij.ui.CheckedTreeNode
-import com.intellij.ui.JBColor
 import com.intellij.ui.SimpleTextAttributes
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBScrollPane
@@ -15,10 +14,11 @@ import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.tree.TreeUtil
 import com.maddrobot.plugins.udm.PackageFinderBundle.message
 import com.maddrobot.plugins.udm.gradle.manager.model.UnifiedPackage
+import com.maddrobot.plugins.udm.ui.CheckboxPolicies
 import com.maddrobot.plugins.udm.ui.StatusBadge
+import com.maddrobot.plugins.udm.ui.UdmColors
 import java.awt.BorderLayout
 import java.awt.Component
-import java.awt.Dimension
 import java.awt.FlowLayout
 import javax.swing.*
 import javax.swing.tree.DefaultMutableTreeNode
@@ -61,7 +61,7 @@ class BulkUpgradeDialog(
 
     override fun createCenterPanel(): JComponent {
         val panel = JPanel(BorderLayout())
-        panel.preferredSize = Dimension(600, 500)
+        panel.minimumSize = JBUI.size(560, 420)
         panel.border = JBUI.Borders.empty(10)
 
         // Header with summary and grouping selector
@@ -89,7 +89,11 @@ class BulkUpgradeDialog(
 
         // Checkbox tree
         rootNode = CheckedTreeNode("Packages")
-        checkboxTree = CheckboxTree(PackageTreeCellRenderer(), rootNode).apply {
+        checkboxTree = CheckboxTree(
+            PackageTreeCellRenderer(),
+            rootNode,
+            CheckboxPolicies.propagateEverything()
+        ).apply {
             isRootVisible = false
             showsRootHandles = true
         }
@@ -121,6 +125,8 @@ class BulkUpgradeDialog(
         updateSummary()
         return panel
     }
+
+    override fun getPreferredFocusedComponent(): JComponent? = checkboxTree
 
     private fun updateTree() {
         rootNode.removeAllChildren()
@@ -308,7 +314,7 @@ class BulkUpgradeDialog(
                     textRenderer.append(" → ", SimpleTextAttributes.GRAYED_ATTRIBUTES)
                     textRenderer.append("${pkg.latestVersion}", SimpleTextAttributes(
                         SimpleTextAttributes.STYLE_PLAIN,
-                        JBColor(0x4CAF50, 0x81C784)
+                        UdmColors.success
                     ))
                 }
             }

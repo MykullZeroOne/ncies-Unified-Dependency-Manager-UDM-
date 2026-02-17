@@ -3,11 +3,11 @@ package com.maddrobot.plugins.udm.gradle.manager.ui
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.DialogWrapper
 import com.intellij.ui.HyperlinkLabel
-import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.util.ui.JBUI
 import com.maddrobot.plugins.udm.PackageFinderBundle.message
+import com.maddrobot.plugins.udm.ui.UdmColors
 import com.maddrobot.plugins.udm.maven.manager.MojoDescriptor
 import com.maddrobot.plugins.udm.maven.manager.MojoParameter
 import com.maddrobot.plugins.udm.maven.manager.PluginDescriptor
@@ -60,7 +60,7 @@ class MavenPluginConfigDialog(
     override fun createCenterPanel(): JComponent {
         val mainPanel = JPanel(BorderLayout(0, 8)).apply {
             border = JBUI.Borders.empty(8)
-            preferredSize = Dimension(600, 500)
+            minimumSize = JBUI.size(560, 420)
         }
 
         if (descriptor == null) {
@@ -117,7 +117,7 @@ class MavenPluginConfigDialog(
         }
 
         panel.add(JBLabel(message("unified.plugin.configure.maven.load.failed")).apply {
-            foreground = JBColor.GRAY
+            foreground = UdmColors.secondaryText
         }, BorderLayout.NORTH)
 
         // Provide a generic key-value editor as fallback
@@ -145,7 +145,7 @@ class MavenPluginConfigDialog(
         // Header
         if (mojo.description != null) {
             parameterPanel.add(JBLabel(mojo.description).apply {
-                foreground = JBColor.GRAY
+                foreground = UdmColors.secondaryText
                 font = font.deriveFont(11f)
                 alignmentX = Component.LEFT_ALIGNMENT
                 border = JBUI.Borders.emptyBottom(8)
@@ -199,7 +199,7 @@ class MavenPluginConfigDialog(
         // Label with required marker
         val labelText = if (required) "*$name" else name
         val label = JBLabel(labelText).apply {
-            preferredSize = Dimension(160, 24)
+            border = JBUI.Borders.emptyRight(8)
             if (required) {
                 font = font.deriveFont(Font.BOLD)
             }
@@ -226,9 +226,8 @@ class MavenPluginConfigDialog(
             else append("($type)")
         }
         val infoLabel = JBLabel(infoText).apply {
-            foreground = JBColor.GRAY
+            foreground = UdmColors.secondaryText
             font = font.deriveFont(10f)
-            preferredSize = Dimension(160, 24)
         }
         rowPanel.add(infoLabel, BorderLayout.EAST)
 
@@ -257,4 +256,6 @@ class MavenPluginConfigDialog(
                 "https://search.maven.org/artifact/$groupId/$artifactId"
         }
     }
+
+    override fun getPreferredFocusedComponent(): JComponent? = goalComboBox
 }

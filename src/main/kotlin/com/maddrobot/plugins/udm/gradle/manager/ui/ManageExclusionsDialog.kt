@@ -4,17 +4,16 @@ import com.intellij.icons.AllIcons
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.DialogWrapper
 import com.intellij.ui.CheckBoxList
-import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.util.ui.JBUI
 import com.maddrobot.plugins.udm.PackageFinderBundle.message
+import com.maddrobot.plugins.udm.ui.UdmColors
 import com.maddrobot.plugins.udm.gradle.manager.model.DependencyExclusion
 import com.maddrobot.plugins.udm.gradle.manager.model.UnifiedPackage
 import com.maddrobot.plugins.udm.gradle.manager.service.TransitiveDependency
 import com.maddrobot.plugins.udm.gradle.manager.service.TransitiveDependencyService
 import java.awt.BorderLayout
-import java.awt.Dimension
 import javax.swing.*
 
 /**
@@ -30,7 +29,7 @@ class ManageExclusionsDialog(
     private val checkBoxList = CheckBoxList<DependencyItem>()
     private val loadingLabel = JBLabel(message("unified.exclusion.manage.loading")).apply {
         icon = AllIcons.Process.Step_1
-        foreground = JBColor.GRAY
+        foreground = UdmColors.secondaryText
     }
     private val contentPanel = JPanel(BorderLayout())
     private var isLoading = true
@@ -48,7 +47,7 @@ class ManageExclusionsDialog(
 
     override fun createCenterPanel(): JComponent {
         val mainPanel = JPanel(BorderLayout()).apply {
-            preferredSize = Dimension(500, 400)
+            minimumSize = JBUI.size(520, 360)
             border = JBUI.Borders.empty(8)
         }
 
@@ -100,7 +99,7 @@ class ManageExclusionsDialog(
         if (dependencies.isEmpty()) {
             contentPanel.add(JBLabel(message("unified.exclusion.manage.empty")).apply {
                 horizontalAlignment = SwingConstants.CENTER
-                foreground = JBColor.GRAY
+                foreground = UdmColors.secondaryText
             }, BorderLayout.CENTER)
         } else {
             // Populate checkbox list
@@ -133,7 +132,7 @@ class ManageExclusionsDialog(
             }
 
             val scrollPane = JBScrollPane(checkBoxList).apply {
-                preferredSize = Dimension(0, 300)
+                minimumSize = JBUI.size(0, 300)
             }
             contentPanel.add(scrollPane, BorderLayout.CENTER)
         }
@@ -189,4 +188,6 @@ class ManageExclusionsDialog(
     ) {
         override fun toString(): String = if (isAlreadyExcluded) "$displayText ${message("unified.exclusion.manage.already.excluded")}" else displayText
     }
+
+    override fun getPreferredFocusedComponent(): JComponent? = checkBoxList
 }

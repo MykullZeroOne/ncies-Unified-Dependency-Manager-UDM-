@@ -20,6 +20,7 @@ import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import com.maddrobot.plugins.udm.PackageFinderBundle.message
 import com.maddrobot.plugins.udm.gradle.manager.GradleDependencyModifier
+import com.maddrobot.plugins.udm.ui.UdmColors
 import com.maddrobot.plugins.udm.gradle.manager.model.AvailableRepository
 import com.maddrobot.plugins.udm.gradle.manager.model.DependencyExclusion
 import com.maddrobot.plugins.udm.gradle.manager.model.PackageMetadata
@@ -64,15 +65,15 @@ class PackageDetailsPanel(
     }
     private val installedVersionLabel = JBLabel().apply {
         font = font.deriveFont(14f)
-        foreground = JBColor.GRAY
+        foreground = UdmColors.secondaryText
     }
     private val latestVersionLabel = JBLabel().apply {
         font = font.deriveFont(12f)
-        foreground = JBColor(0x4CAF50, 0x81C784) // Green for updates
+        foreground = UdmColors.success
     }
     private val notInstalledLabel = JBLabel(message("unified.details.not.installed")).apply {
         font = font.deriveFont(Font.ITALIC, 12f)
-        foreground = JBColor.GRAY
+        foreground = UdmColors.secondaryText
         isVisible = false
     }
 
@@ -81,7 +82,7 @@ class PackageDetailsPanel(
         isVisible = false
     }
     private val versionComboBox = JComboBox<VersionItem>().apply {
-        preferredSize = Dimension(150, preferredSize.height)
+        prototypeDisplayValue = VersionItem("9999.9999.9999")
         renderer = VersionListCellRenderer()
     }
     private val applyVersionButton = JButton(message("unified.details.button.apply")).apply {
@@ -197,26 +198,21 @@ class PackageDetailsPanel(
 
     // === ACTION BUTTONS ===
     private val installButton = JButton(message("unified.details.button.install")).apply {
-        preferredSize = Dimension(0, 40)
     }
     private val updateButton = JButton(message("unified.details.button.update")).apply {
-        preferredSize = Dimension(0, 40)
     }
     private val downgradeButton = JButton(message("unified.details.button.downgrade")).apply {
-        preferredSize = Dimension(0, 40)
     }
     private val uninstallButton = JButton(message("unified.details.button.uninstall")).apply {
-        preferredSize = Dimension(0, 40)
     }
     private val configureButton = JButton(message("unified.plugin.configure.button")).apply {
         icon = AllIcons.General.Settings
-        preferredSize = Dimension(0, 40)
     }
 
     // Loading indicator
     private val loadingLabel = JBLabel(message("unified.details.loading")).apply {
         icon = AllIcons.Process.Step_1
-        foreground = JBColor.GRAY
+        foreground = UdmColors.secondaryText
         isVisible = false
     }
 
@@ -259,7 +255,7 @@ class PackageDetailsPanel(
         return JPanel(BorderLayout()).apply {
             val label = JBLabel(message("unified.details.empty")).apply {
                 horizontalAlignment = SwingConstants.CENTER
-                foreground = JBColor.GRAY
+                foreground = UdmColors.secondaryText
             }
             add(label, BorderLayout.CENTER)
         }
@@ -322,7 +318,7 @@ class PackageDetailsPanel(
             border = JBUI.Borders.emptyBottom(12)
 
             add(JBLabel(message("unified.details.label.publisher")).apply {
-                foreground = JBColor.GRAY
+                foreground = UdmColors.secondaryText
             })
             add(Box.createHorizontalStrut(8))
             add(publisherLabel)
@@ -434,7 +430,7 @@ class PackageDetailsPanel(
         }
     }
 
-    private val labelColor = JBColor(0x4A90D9, 0x589DF6) // Blue label color
+    private val labelColor = UdmColors.accent
 
     private fun createMetadataGrid(): JPanel {
         return JPanel(GridBagLayout()).apply {
@@ -651,7 +647,7 @@ class PackageDetailsPanel(
                 // Show update indicator (green arrow) for newer versions
                 if (value.hasUpdateIndicator) {
                     icon = AllIcons.General.ArrowUp
-                    foreground = if (isSelected) foreground else JBColor(0x4CAF50, 0x81C784)
+                    foreground = if (isSelected) foreground else UdmColors.success
                 } else if (value.isInstalled) {
                     icon = AllIcons.Actions.Checked
                 } else {
@@ -1170,7 +1166,7 @@ class PackageDetailsPanel(
         if (exclusions.isEmpty()) {
             // Empty state with just Add Exclusion button
             val emptyLabel = JBLabel(message("unified.exclusion.empty")).apply {
-                foreground = JBColor.GRAY
+                foreground = UdmColors.secondaryText
                 alignmentX = Component.LEFT_ALIGNMENT
             }
             exclusionsPanel.add(emptyLabel)
@@ -1243,11 +1239,11 @@ class PackageDetailsPanel(
 
         // Severity badge
         val severityColor = when (vulnInfo.severity) {
-            VulnerabilitySeverity.CRITICAL -> JBColor(0xD32F2F, 0xEF5350)
-            VulnerabilitySeverity.HIGH -> JBColor(0xE64A19, 0xFF7043)
-            VulnerabilitySeverity.MEDIUM -> JBColor(0xF57C00, 0xFFB74D)
-            VulnerabilitySeverity.LOW -> JBColor(0xFBC02D, 0xFFF176)
-            VulnerabilitySeverity.UNKNOWN -> JBColor.GRAY
+            VulnerabilitySeverity.CRITICAL -> UdmColors.severityCritical
+            VulnerabilitySeverity.HIGH -> UdmColors.severityHigh
+            VulnerabilitySeverity.MEDIUM -> UdmColors.severityMedium
+            VulnerabilitySeverity.LOW -> UdmColors.severityLow
+            VulnerabilitySeverity.UNKNOWN -> UdmColors.secondaryText
         }
 
         val severityRow = JPanel(FlowLayout(FlowLayout.LEFT, 4, 0)).apply {
@@ -1323,7 +1319,7 @@ class PackageDetailsPanel(
 
                 // Highlight the fix version prominently
                 add(JBLabel(vulnInfo.fixedVersion).apply {
-                    foreground = JBColor(0x4CAF50, 0x81C784)
+                    foreground = UdmColors.success
                     font = font.deriveFont(Font.BOLD, 13f)
                 })
 
@@ -1681,7 +1677,7 @@ private class InstallPackageDialog(
             } else if (availableRepos.size == 1) {
                 row(message("unified.details.label.source.repo")) {
                     label(availableRepos.first().name).applyToComponent {
-                        foreground = JBColor.GRAY
+                        foreground = UdmColors.secondaryText
                     }
                 }
             }
@@ -1728,7 +1724,7 @@ class CollapsibleSectionPanel(
                 font = font.deriveFont(Font.BOLD, 12f)
             })
             add(countLabel.apply {
-                foreground = JBColor.GRAY
+                foreground = UdmColors.secondaryText
                 font = font.deriveFont(11f)
             })
 

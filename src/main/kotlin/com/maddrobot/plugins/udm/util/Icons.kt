@@ -16,7 +16,7 @@ object Icons {
     val GRADLE_PLUGIN = PackageFinderIcon("/icons/gradlePlugin.svg", "/icons/gradlePlugin_dark.svg")
     val LOCAL_REPOSITORY = PackageFinderIcon("/icons/localRepository.svg", "/icons/localRepository_dark.svg")
     val CENTRAL_REPOSITORY = PackageFinderIcon("/icons/centralRepository.svg", "/icons/centralRepository_dark.svg")
-    val NEXUS_REPOSITORY = PackageFinderIcon("/icons/nexus.svg", "/icons/nexus.svg")
+    val NEXUS_REPOSITORY = PackageFinderIcon("/icons/nexus.svg", "/icons/nexus_dark.svg")
     val REFRESH = PackageFinderIcon("/icons/refresh.svg", "/icons/refresh_dark.svg")
     val JAR = PackageFinderIcon("/icons/jar.svg", null)
     val JAR_SOURCES = PackageFinderIcon("/icons/jar_sources.svg", null)

@@ -8,13 +8,13 @@ import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.ui.CheckboxTree
 import com.intellij.ui.CheckedTreeNode
-import com.intellij.ui.JBColor
 import com.intellij.ui.ToolbarDecorator
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.dsl.builder.*
 import com.intellij.util.ui.JBUI
 import com.maddrobot.plugins.udm.PackageFinderBundle.message
+import com.maddrobot.plugins.udm.ui.UdmColors
 import com.maddrobot.plugins.udm.gradle.manager.service.RepositoryConfig
 import com.maddrobot.plugins.udm.gradle.manager.service.RepositoryConfigWriter
 import com.maddrobot.plugins.udm.gradle.manager.service.RepositoryDiscoveryService
@@ -52,7 +52,7 @@ class RepositoryManagerDialog(
 
     override fun createCenterPanel(): JComponent {
         return JPanel(BorderLayout()).apply {
-            preferredSize = Dimension(600, 450)
+            minimumSize = JBUI.size(560, 420)
 
             // Repository list with decorator (Add, Edit, Remove buttons)
             repositoryList.apply {
@@ -81,7 +81,7 @@ class RepositoryManagerDialog(
             val infoPanel = JPanel(BorderLayout()).apply {
                 border = JBUI.Borders.emptyTop(8)
                 add(JBLabel(message("unified.repo.manager.info")).apply {
-                    foreground = JBColor.GRAY
+                    foreground = UdmColors.secondaryText
                     font = font.deriveFont(font.size - 1f)
                 }, BorderLayout.CENTER)
             }
@@ -90,6 +90,8 @@ class RepositoryManagerDialog(
             add(infoPanel, BorderLayout.SOUTH)
         }
     }
+
+    override fun getPreferredFocusedComponent(): JComponent? = repositoryList
 
     private fun loadRepositories() {
         repositories = discoveryService.getConfiguredRepositories().toMutableList()
@@ -162,7 +164,7 @@ class RepositoryManagerDialog(
 
         // HTTP HEAD request with authentication
         try {
-            val url = java.net.URL(selected.url.trimEnd('/') + "/")
+            val url = java.net.URI.create(selected.url.trimEnd('/') + "/").toURL()
             val connection = url.openConnection() as java.net.HttpURLConnection
             connection.requestMethod = "HEAD"
             connection.connectTimeout = 5000

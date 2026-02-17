@@ -17,6 +17,7 @@ import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.components.JBTabbedPane
 import com.intellij.util.ui.JBUI
 import com.maddrobot.plugins.udm.PackageFinderBundle.message
+import com.maddrobot.plugins.udm.ui.UdmColors
 import com.maddrobot.plugins.udm.gradle.manager.service.PackageCacheService
 import com.maddrobot.plugins.udm.gradle.manager.service.PluginLogService
 import com.maddrobot.plugins.udm.gradle.manager.service.RepositoryConfig
@@ -95,7 +96,7 @@ class MainToolWindowPanel(
 
                 add(JBLabel(message("unified.panel.module")))
                 add(packagesPanel.getModuleSelector().apply {
-                    preferredSize = Dimension(120, preferredSize.height)
+                    prototypeDisplayValue = message("unified.panel.module.all")
                 })
                 add(createMenuButton())
             }
@@ -107,22 +108,18 @@ class MainToolWindowPanel(
 
     private fun createTabButton(text: String, tabIndex: Int, selected: Boolean): JToggleButton {
         return JToggleButton(text).apply {
-            isFocusPainted = false
+            isFocusPainted = true
             isBorderPainted = false
             isContentAreaFilled = false
             isOpaque = false
+            isFocusable = true
             font = font.deriveFont(13f)
-            foreground = if (selected) JBColor(0x4A90D9, 0x589DF6) else JBColor.foreground()
             border = JBUI.Borders.empty(8, 16)
             isSelected = selected
+            accessibleContext.accessibleName = text
 
-            // Underline for selected tab
-            if (selected) {
-                border = BorderFactory.createCompoundBorder(
-                    BorderFactory.createMatteBorder(0, 0, 2, 0, JBColor(0x4A90D9, 0x589DF6)),
-                    JBUI.Borders.empty(8, 16, 6, 16)
-                )
-            }
+            updateTabButtonStyle(this, selected)
+            installTabKeyBindings(this)
 
             addActionListener {
                 selectTab(tabIndex)
@@ -137,19 +134,68 @@ class MainToolWindowPanel(
         // Update button styles
         tabButtons.forEachIndexed { i, button ->
             val isSelected = i == index
-            button.foreground = if (isSelected) JBColor(0x4A90D9, 0x589DF6) else JBColor.foreground()
-            button.border = if (isSelected) {
-                BorderFactory.createCompoundBorder(
-                    BorderFactory.createMatteBorder(0, 0, 2, 0, JBColor(0x4A90D9, 0x589DF6)),
-                    JBUI.Borders.empty(8, 16, 6, 16)
-                )
-            } else {
-                JBUI.Borders.empty(8, 16)
-            }
+            updateTabButtonStyle(button, isSelected)
         }
 
         // Switch tab content
         tabbedPane.selectedIndex = index
+        tabButtons.getOrNull(index)?.requestFocusInWindow()
+    }
+
+    private fun updateTabButtonStyle(button: JToggleButton, isSelected: Boolean) {
+        button.foreground = if (isSelected) UdmColors.accent else JBColor.foreground()
+        button.font = if (isSelected) button.font.deriveFont(Font.BOLD) else button.font.deriveFont(Font.PLAIN)
+        button.border = if (isSelected) {
+            BorderFactory.createCompoundBorder(
+                BorderFactory.createMatteBorder(0, 0, 2, 0, UdmColors.accent),
+                JBUI.Borders.empty(8, 16, 6, 16)
+            )
+        } else {
+            JBUI.Borders.empty(8, 16)
+        }
+    }
+
+    private fun installTabKeyBindings(button: JToggleButton) {
+        val inputMap = button.getInputMap(JComponent.WHEN_FOCUSED)
+        val actionMap = button.actionMap
+
+        inputMap.put(KeyStroke.getKeyStroke("RIGHT"), "nextTab")
+        inputMap.put(KeyStroke.getKeyStroke("LEFT"), "prevTab")
+        inputMap.put(KeyStroke.getKeyStroke("HOME"), "firstTab")
+        inputMap.put(KeyStroke.getKeyStroke("END"), "lastTab")
+
+        actionMap.put("nextTab", object : AbstractAction() {
+            override fun actionPerformed(e: java.awt.event.ActionEvent) {
+                val index = tabButtons.indexOf(button)
+                if (index >= 0 && tabButtons.isNotEmpty()) {
+                    val nextIndex = (index + 1) % tabButtons.size
+                    selectTab(nextIndex)
+                }
+            }
+        })
+        actionMap.put("prevTab", object : AbstractAction() {
+            override fun actionPerformed(e: java.awt.event.ActionEvent) {
+                val index = tabButtons.indexOf(button)
+                if (index >= 0 && tabButtons.isNotEmpty()) {
+                    val prevIndex = (index - 1 + tabButtons.size) % tabButtons.size
+                    selectTab(prevIndex)
+                }
+            }
+        })
+        actionMap.put("firstTab", object : AbstractAction() {
+            override fun actionPerformed(e: java.awt.event.ActionEvent) {
+                if (tabButtons.isNotEmpty()) {
+                    selectTab(0)
+                }
+            }
+        })
+        actionMap.put("lastTab", object : AbstractAction() {
+            override fun actionPerformed(e: java.awt.event.ActionEvent) {
+                if (tabButtons.isNotEmpty()) {
+                    selectTab(tabButtons.size - 1)
+                }
+            }
+        })
     }
 
     private fun createMenuButton(): JButton {
@@ -238,7 +284,7 @@ class MainToolWindowPanel(
         fun testConnection() {
             val selected = repositoryList.selectedValue ?: return
             try {
-                val url = java.net.URL(selected.url.trimEnd('/') + "/")
+                val url = java.net.URI.create(selected.url.trimEnd('/') + "/").toURL()
                 val connection = url.openConnection() as java.net.HttpURLConnection
                 connection.requestMethod = "HEAD"
                 connection.connectTimeout = 5000

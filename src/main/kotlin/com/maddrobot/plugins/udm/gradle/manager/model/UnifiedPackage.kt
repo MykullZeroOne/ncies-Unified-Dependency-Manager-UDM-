@@ -11,6 +11,7 @@ import com.maddrobot.plugins.udm.maven.manager.MavenInstalledDependency
 import com.maddrobot.plugins.udm.maven.manager.MavenInstalledPlugin
 import com.maddrobot.plugins.udm.maven.manager.MavenPluginUpdate
 import com.maddrobot.plugins.udm.npm.NpmObject
+import com.maddrobot.plugins.udm.util.VersionClassifier
 
 /**
  * Unified package model that abstracts dependencies from different sources
@@ -106,16 +107,7 @@ data class UnifiedPackage(
      */
     val isPrerelease: Boolean get() {
         val version = installedVersion ?: latestVersion ?: return false
-        val lowerVersion = version.lowercase()
-        return lowerVersion.contains("alpha") ||
-            lowerVersion.contains("beta") ||
-            lowerVersion.contains("-rc") ||
-            lowerVersion.contains(".rc") ||
-            lowerVersion.contains("snapshot") ||
-            lowerVersion.contains("-m") ||    // Milestone releases
-            lowerVersion.contains(".m") ||
-            lowerVersion.contains("-dev") ||
-            lowerVersion.contains("-pre")
+        return VersionClassifier.isPrerelease(version)
     }
 
     /**

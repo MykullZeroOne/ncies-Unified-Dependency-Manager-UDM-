@@ -59,6 +59,7 @@ import com.intellij.openapi.progress.Task
 import com.maddrobot.plugins.udm.licensing.Feature
 import com.maddrobot.plugins.udm.licensing.LicenseChecker
 import com.maddrobot.plugins.udm.licensing.PremiumFeatureGuard
+import com.maddrobot.plugins.udm.util.VersionClassifier
 import java.awt.BorderLayout
 import java.awt.FlowLayout
 import javax.swing.*
@@ -76,7 +77,7 @@ class UnifiedDependencyPanel(
         // to be initialized before init block runs
         val ALL_REPOSITORIES_OPTION = RepositoryConfig(
             id = "__all__",
-            name = "All Repositories",
+            name = message("unified.toolbar.feed.all"),
             url = "",
             type = RepositoryType.CUSTOM
         )
@@ -89,6 +90,7 @@ class UnifiedDependencyPanel(
     private val gradleDependencyService = GradleDependencyManagerService.getInstance(project)
     private val gradleScanner = GradleDependencyScanner(project)
     private val gradleModifier = GradleDependencyModifier(project)
+    private val gradleUpdateService = GradleUpdateService(project)
 
     // Maven Services
     private val mavenScanner = MavenDependencyScanner(project)
@@ -113,6 +115,7 @@ class UnifiedDependencyPanel(
 
     // Cached Maven dependencies
     private var mavenInstalledDependencies: List<MavenInstalledDependency> = emptyList()
+    private var installedPackagesCache: List<UnifiedPackage> = emptyList()
 
     // UI Components
     private val listPanel = PackageListPanel(project, parentDisposable)
@@ -126,8 +129,11 @@ class UnifiedDependencyPanel(
 
     // Toolbar Actions
     private val searchAction = SearchPackagesAction { query ->
+        listPanel.setSearchText(query)
         if (query.isNotBlank()) {
             performSearch(query)
+        } else {
+            loadInstalledPackages()
         }
     }
     private val moduleSelectorAction = ModuleSelectorAction { module ->
@@ -135,10 +141,18 @@ class UnifiedDependencyPanel(
     }
     private val feedSelectorAction = FeedSelectorAction { feed ->
         // Feed selection will be used when performing search
-        uiLog.info("Selected repository feed: ${feed?.name ?: "All Repositories"}", "Toolbar")
+        uiLog.info("Selected repository feed: ${feed?.name ?: message("unified.toolbar.feed.all")}", "Toolbar")
     }
+    private var includePrerelease = false
     private val prereleaseToggleAction = PrereleaseToggleAction { includePrerelease ->
+        this.includePrerelease = includePrerelease
         uiLog.info("Prerelease filter: $includePrerelease", "Toolbar")
+        val query = searchAction.getText()
+        if (query.isNotBlank()) {
+            performSearch(query)
+        } else {
+            loadInstalledPackages()
+        }
     }
     private val refreshAction = RefreshAction {
         if (isGradleProject) {
@@ -646,15 +660,16 @@ class UnifiedDependencyPanel(
      * Update toolbar action states based on current dependency data.
      */
     private fun updateToolbarActionStates() {
-        // Check if there are packages with updates
-        val hasUpdates = if (isGradleProject) {
-            gradleDependencyService.dependencyUpdates.isNotEmpty()
-        } else false
+        val packages = if (installedPackagesCache.isNotEmpty()) {
+            installedPackagesCache
+        } else {
+            getAllInstalledPackages()
+        }
+
+        val hasUpdates = packages.any { it.isInstalled && it.latestVersion != null && it.hasUpdate }
         upgradeAllAction.setHasUpdates(hasUpdates)
 
-        // Check for inconsistent versions across modules
-        val allPackages = getAllInstalledPackages()
-        val inconsistentPackages = ConsolidateVersionsDialog.findInconsistentPackages(allPackages)
+        val inconsistentPackages = ConsolidateVersionsDialog.findInconsistentPackages(packages)
         consolidateAction.setHasInconsistentVersions(inconsistentPackages.isNotEmpty())
     }
 
@@ -665,7 +680,9 @@ class UnifiedDependencyPanel(
      */
     private fun loadInstalledPackages() {
         val packages = getAllInstalledPackages()
+        installedPackagesCache = packages
         listPanel.setPackages(packages)
+        updateToolbarActionStates()
 
         // Check for vulnerabilities asynchronously if enabled
         val settings = PackageFinderSettingState.getInstance()
@@ -682,7 +699,7 @@ class UnifiedDependencyPanel(
             packages.addAll(
                 PackageAdapters.aggregateByPackage(
                     gradleDependencyService.installedDependencies,
-                    gradleDependencyService.dependencyUpdates
+                    getGradleDependencyUpdates()
                 )
             )
 
@@ -693,7 +710,7 @@ class UnifiedDependencyPanel(
 
                 val pluginUpdates = if (checkUpdates) {
                     try {
-                        GradlePluginUpdateService.checkForUpdates(gradlePlugins)
+                        GradlePluginUpdateService.checkForUpdates(gradlePlugins, includePrerelease)
                     } catch (e: Exception) {
                         log.warn("Failed to check Gradle plugin updates", e)
                         emptyList()
@@ -715,10 +732,18 @@ class UnifiedDependencyPanel(
             // Check for updates on Maven dependencies
             val mavenDependencyVersions = if (checkUpdates) {
                 try {
-                    mavenInstalledDependencies.associate { dep ->
-                        val latestVersion = MavenPluginUpdateService.getLatestVersion(dep.groupId, dep.artifactId)
-                        dep.id to latestVersion
-                    }.mapNotNull { (key, value) -> value?.let { key to it } }.toMap()
+                    mavenInstalledDependencies.mapNotNull { dep ->
+                        val latestVersion = MavenPluginUpdateService.getLatestVersion(
+                            dep.groupId,
+                            dep.artifactId,
+                            includePrerelease
+                        )
+                        if (latestVersion != null && VersionClassifier.isNewerThan(latestVersion, dep.version)) {
+                            dep.id to latestVersion
+                        } else {
+                            null
+                        }
+                    }.toMap()
                 } catch (e: Exception) {
                     log.warn("Failed to check Maven dependency updates", e)
                     emptyMap()
@@ -736,7 +761,7 @@ class UnifiedDependencyPanel(
 
                 val pluginUpdates = if (checkUpdates) {
                     try {
-                        MavenPluginUpdateService.checkForUpdates(mavenPlugins)
+                        MavenPluginUpdateService.checkForUpdates(mavenPlugins, includePrerelease)
                     } catch (e: Exception) {
                         log.warn("Failed to check Maven plugin updates", e)
                         emptyList()
@@ -754,6 +779,20 @@ class UnifiedDependencyPanel(
         }
 
         return packages
+    }
+
+    private fun getGradleDependencyUpdates(): List<DependencyUpdate> {
+        if (!isGradleProject) return emptyList()
+        if (includePrerelease) return gradleDependencyService.dependencyUpdates
+
+        val updates = mutableListOf<DependencyUpdate>()
+        for (dep in gradleDependencyService.installedDependencies) {
+            val latestVersion = gradleUpdateService.getLatestVersion(dep.groupId, dep.artifactId, includePrerelease = false)
+            if (latestVersion != null && VersionClassifier.isNewerThan(latestVersion, dep.version)) {
+                updates.add(DependencyUpdate(dep, latestVersion))
+            }
+        }
+        return updates
     }
 
     /**
@@ -872,7 +911,10 @@ class UnifiedDependencyPanel(
         val selectedRepo = feedSelectorAction.getSelectedFeed()
         val isAllRepos = selectedRepo == null // null means "All Repositories"
 
-        uiLog.debug("Selected repo: ${selectedRepo?.name ?: "All Repositories"}, isAllRepos=$isAllRepos", "Search")
+        uiLog.debug(
+            "Selected repo: ${selectedRepo?.name ?: message("unified.toolbar.feed.all")}, isAllRepos=$isAllRepos",
+            "Search"
+        )
 
         if (isAllRepos) {
             uiLog.info("Starting search for: '$query' in ALL repositories (${searchableRepos.size} repos)", "Search")
@@ -925,6 +967,13 @@ class UnifiedDependencyPanel(
                         }
 
                         pkg
+                    }
+                    .let { packages ->
+                        if (includePrerelease) {
+                            packages
+                        } else {
+                            packages.filterNot { VersionClassifier.isPrerelease(it.latestVersion) }
+                        }
                     }
 
                 // Combine: filtered installed packages + available (not installed) search results
@@ -2442,13 +2491,30 @@ class UnifiedDependencyPanel(
                 }
 
                 ApplicationManager.getApplication().invokeLater {
-                    callback(versions.ifEmpty { listOfNotNull(pkg.latestVersion) })
+                    val filtered = if (includePrerelease) {
+                        versions
+                    } else {
+                        versions.filterNot { VersionClassifier.isPrerelease(it) }
+                    }
+                    val fallback = if (filtered.isNotEmpty()) {
+                        filtered
+                    } else if (includePrerelease) {
+                        listOfNotNull(pkg.latestVersion)
+                    } else {
+                        listOfNotNull(pkg.installedVersion)
+                    }
+                    callback(fallback)
                 }
             } catch (e: Exception) {
                 log.error("Failed to fetch versions", e)
                 uiLog.error("Failed to fetch versions: ${e.message}", "Versions")
                 ApplicationManager.getApplication().invokeLater {
-                    callback(listOfNotNull(pkg.latestVersion))
+                    val fallback = if (includePrerelease) {
+                        listOfNotNull(pkg.latestVersion)
+                    } else {
+                        listOfNotNull(pkg.installedVersion)
+                    }
+                    callback(fallback)
                 }
             }
         }
@@ -2639,7 +2705,7 @@ class UnifiedDependencyPanel(
                 indicator.text = "Checking for available updates..."
 
                 if (isGradleProject) {
-                    packagesWithUpdates.addAll(gradleDependencyService.dependencyUpdates.map { update ->
+                    packagesWithUpdates.addAll(getGradleDependencyUpdates().map { update ->
                         PackageAdapters.fromInstalledDependency(update.installed, update)
                     })
                 }

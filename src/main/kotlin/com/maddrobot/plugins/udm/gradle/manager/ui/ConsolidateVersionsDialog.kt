@@ -12,9 +12,9 @@ import com.intellij.ui.table.JBTable
 import com.intellij.util.ui.JBUI
 import com.maddrobot.plugins.udm.PackageFinderBundle.message
 import com.maddrobot.plugins.udm.gradle.manager.model.UnifiedPackage
+import com.maddrobot.plugins.udm.ui.UdmColors
 import java.awt.BorderLayout
 import java.awt.Component
-import java.awt.Dimension
 import java.awt.FlowLayout
 import javax.swing.*
 import javax.swing.table.AbstractTableModel
@@ -58,7 +58,7 @@ class ConsolidateVersionsDialog(
 
     override fun createCenterPanel(): JComponent {
         val panel = JPanel(BorderLayout())
-        panel.preferredSize = Dimension(800, 500)
+        panel.minimumSize = JBUI.size(640, 420)
         panel.border = JBUI.Borders.empty(10)
 
         // Header
@@ -172,11 +172,13 @@ class ConsolidateVersionsDialog(
 
         previewPanel.removeAll()
         previewPanel.add(JBScrollPane(JBLabel(previewText.toString())).apply {
-            preferredSize = Dimension(0, 150)
+            minimumSize = JBUI.size(0, 150)
         }, BorderLayout.CENTER)
         previewPanel.isVisible = true
         previewPanel.revalidate()
     }
+
+    override fun getPreferredFocusedComponent(): JComponent? = table
 
     private fun updateSummary() {
         val configured = inconsistentPackages.count { it.targetVersion != null }
@@ -286,7 +288,7 @@ class ConsolidateVersionsDialog(
         ): Component {
             super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column)
             text = value?.toString() ?: message("unified.consolidate.dialog.target.select")
-            foreground = if (value != null) JBColor(0x4CAF50, 0x81C784) else JBColor.GRAY
+            foreground = if (value != null) UdmColors.success else UdmColors.secondaryText
             return this
         }
     }
