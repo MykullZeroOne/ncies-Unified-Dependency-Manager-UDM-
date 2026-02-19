@@ -3,6 +3,8 @@ package com.maddrobot.plugins.udm.gradle.manager.service
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.application.ReadAction
+import com.intellij.openapi.project.DumbService
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.psi.PsiManager
 import com.intellij.psi.util.PsiTreeUtil
@@ -425,16 +427,27 @@ class RepositoryDiscoveryService(private val project: Project) {
         source: RepositorySource,
         gradleProperties: Map<String, String> = emptyMap()
     ): List<RepositoryConfig> {
-        val repos = mutableListOf<RepositoryConfig>()
-        val virtualFile = LocalFileSystem.getInstance().findFileByPath(filePath) ?: return emptyList()
-        val psiFile = PsiManager.getInstance(project).findFile(virtualFile) ?: return emptyList()
+        return runReadActionInSmartMode {
+            val repos = mutableListOf<RepositoryConfig>()
+            val virtualFile = LocalFileSystem.getInstance().findFileByPath(filePath) ?: return@runReadActionInSmartMode emptyList()
+            val psiFile = PsiManager.getInstance(project).findFile(virtualFile) ?: return@runReadActionInSmartMode emptyList()
 
-        when (psiFile) {
-            is GroovyFile -> repos.addAll(parseGroovyRepositories(psiFile, source, gradleProperties))
-            is KtFile -> repos.addAll(parseKotlinRepositories(psiFile, source, gradleProperties))
+            when (psiFile) {
+                is GroovyFile -> repos.addAll(parseGroovyRepositories(psiFile, source, gradleProperties))
+                is KtFile -> repos.addAll(parseKotlinRepositories(psiFile, source, gradleProperties))
+            }
+
+            repos
         }
+    }
 
-        return repos
+    private fun <T> runReadActionInSmartMode(action: () -> T): T {
+        val dumbService = DumbService.getInstance(project)
+        return if (dumbService.isDumb) {
+            dumbService.runReadActionInSmartMode<T> { action() }
+        } else {
+            ReadAction.compute<T, RuntimeException> { action() }
+        }
     }
 
     private fun parseGroovyRepositories(
